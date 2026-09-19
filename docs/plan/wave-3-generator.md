@@ -63,3 +63,67 @@ and Signpost's generator notes on retry rates and measuring before choosing pres
 - Sim table recorded in ARCHITECTURE.md with zero final-assertion failures.
 - Worst-case generation time measured and acceptable for a worker (*starting point*: p95
   under five seconds on this machine; say so plainly if it is not).
+
+---
+
+## What wave 2 hands you (written 2026-09-19, before wave 3 starts)
+
+The tasks above were written before the solver existed, so they name things like "the
+tier-capped deduction solver" without saying what to call. This is what is actually there.
+
+### The calls you need
+
+```ts
+import { solve, MAX_TIER, TRIAL_BUDGET } from "$lib/engine/solver/solve";
+import { answers, answerPossible, cellPossible } from "$lib/engine/solver/exhaustive";
+import { PRESETS, acceptsTier, difficultyForTier } from "$lib/engine/solver/difficulty";
+import { explainer, clueSentence } from "$lib/engine/solver/explain";
+import { clueTopicKeys } from "$lib/engine/clues";
+```
+
+`solve(frame, clues, { maxTier?, trialBudget?, record? })` returns `tier`, `finished`,
+`answer`, `remaining`, `steps`, `state`, and — read these two — `budgetSpent` and
+`trialNodes`.
+
+### Five things that will bite if you do not know them
+
+1. **The grade is the cheapest cap at which the case finishes**, not "the highest tier
+   that fired". So the selection loop should solve capped at `preset.tier.max` and then
+   test `acceptsTier(preset, result.tier)`; there is no need to re-solve to find the
+   grade, and a case that comes back below `tier.min` is a real miss, not an artefact.
+2. **`budgetSpent` distinguishes "not proved" from "not provable".** An unfinished case is
+   rejected either way, but if the sim table shows cases failing with `budgetSpent` true,
+   the answer is *not* to raise `TRIAL_BUDGET` — it is part of the grade (invariant 10)
+   and raising it changes which cases exist. It is a signal that the preset is too big.
+3. **Task 3 says do not put the exhaustive solver in the selection loop, and it means it.**
+   `answers()` is the wave-1 oracle and it is a search: fine once per case for task 4's
+   final assertion, ruinous inside a loop that drops one clue at a time.
+4. **`hint.ts#firstTopic` already encodes an action rule**: a physical fact is released by
+   examining its *room*, never by asking about a person, because there is no
+   examine-a-person action. Task 6's mapping has to agree with that, or hints will point
+   at actions the investigation layer does not offer. The two victim clues (`AliveAt`,
+   `DeathWindow`) name no room and fall back to the murder room.
+5. **Every number in `difficulty.ts` is a starting point**, including the two-tier accept
+   bands, and task 10 is where they get replaced. Do not tune them by feel; the sim table
+   is the whole point of this wave.
+
+### What the sim table should carry, beyond task 9's list
+
+- the spread of `result.tier` per preset, against what the preset asked for;
+- how many rejections were `budgetSpent` rather than genuinely unsolvable;
+- `trialNodes` p50/p95, so the budget can be judged rather than guessed at.
+
+Timing to size the loop against: a single `solve` measured 0.5 ms on the Easy shape and
+1.5 ms on Expert, worst case 11 ms over 800 cases. The selection loop's cost is therefore
+roughly "how many solves do you do", and dropping one clue at a time from a 200-clue set
+is 200 of them per pass.
+
+### Still a stub
+
+`tools/sim.mjs` exists and does nothing. `npm run sim` is wired to it.
+
+### Wave 4 will want these, which already exist
+
+`newNotebook`, `apply`, `notebookIsSound` (the Check — one bit, compared with the stored
+truth, never through a solver), `hint`, `explainer`, `defaultGlossary`. The `essential`
+list that `hint`'s third branch needs is task 6's output.
