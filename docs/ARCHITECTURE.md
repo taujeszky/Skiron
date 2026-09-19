@@ -132,6 +132,77 @@ and that is what is proven unique. A consequence to keep in mind when reading so
 code: the deduction solver finishing does **not** mean every cell is settled, and the
 notebook is expected to end a solved case with pencil marks still in it.
 
-*(wave 2)* — the tiered deduction solver, the soundness argument and the grading.
+## 5. The map, and the truth
+
+**The map** is a recursive dissection: take the largest splittable rectangle, cut it along
+its longer axis at a seeded position that leaves both halves at least `minDim` on every
+side, repeat until the room count is right. Doors are drawn from every pair of rooms
+sharing a wall of at least two units — a random spanning tree first, so the house is
+connected, then a few extras so there are cycles to reason about. With a terrace, a strip
+is sliced off one side of the footprint first and dissected as a single outdoor room.
+
+Measured: 0 failures in 30,000 single attempts across rooms 5–9, with and without a
+terrace, on the default 18×12 footprint at `minDim` 3. The retry loop is insurance, not a
+workhorse.
+
+**The truth** is simulated rather than searched for. The victim walks freely up to `t*`,
+and **wherever they happen to be is the murder room** — the plan said to pick a room, but
+picking one and dragging the victim to it flattens the spread, while a free walk lands the
+body in each of eight rooms 10–15% of the time against a flat 12.5%. The killer's walk is
+steered so that "the killer could have got there" holds by construction, and everyone else
+walks with `r*` swept out of their allowance from `t*` onwards. Rules 4 and 5 therefore
+hold because of how the world is built, not because illegal worlds are generated and
+thrown away.
+
+Both `buildFloorPlan` and `simulateTruth` draw **exactly one** number from the caller's
+RNG however many attempts they need, each attempt running on a derived sub-stream. A retry
+that consumed a variable number of draws would shift everything downstream and change what
+an old case ID rebuilds for reasons that have nothing to do with the map.
+
+## 6. Determinism, and how it is actually enforced
+
+Critical invariant 4 — same case ID, byte-identical case — is the one invariant that a
+whole green test suite can be wrong about, because the obvious tests compare engine output
+with engine output *from the same build*. `plan(seed)` equalling `plan(seed)` holds for
+any RNG whatsoever.
+
+Two guards exist because of that, and both were verified by deliberately breaking the code:
+
+- **`golden.test.ts`** pins the RNG's first outputs for a known seed string, and pins the
+  house and the evening that `SK1-N-3f9k2a` builds, indoors and with a terrace. Changing
+  `Math.imul(result, 9)` to `13` in the RNG, or swapping two draws in the simulation, left
+  every other test in the project green; these fail loudly. If they fail, the question is
+  whether the change to what an old ID rebuilds was *intended* — if it was, bump
+  `CASE_ID_VERSION` and regenerate them deliberately.
+- **`purity.test.ts`** reads the engine's own source and bans `Math.random`, `Date`,
+  `performance`, `crypto` and the DOM globals, with **no allow-list**. That is why
+  `randomSeed` lives in `util/entropy.ts` and `newCaseId(preset, seed)` takes its seed: a
+  rule with one blessed exception in it is a rule nobody can test.
+
+## 7. The deduction solver
+
+*(wave 2, in progress)* — `state.ts` and tiers 0 and 1 are in. Two decisions worth
+recording now.
+
+**Candidates are pairs, not two sets.** `state.answer[suspect]` is a mask of the slots
+still possible as `t*` *if that suspect did it*. The plan described two flat sets
+(candidate culprits, candidate slots), but pairs are strictly stronger and are how a
+person reasons: "if it was the Colonel it must have been at nine, and he was in the hall
+at nine, so it was not the Colonel" cannot be expressed by two independent sets, which
+would have to keep both the Colonel and nine o'clock alive. Fairness is defined on pairs
+(§4), so this is also exactly the right granularity for eliminations.
+
+**Trust is derived, never stored.** `trusted = lying ? allSuspects & ~culprits :
+allSuspects`. Clearing a suspect *is* trusting them, so there is no second structure to
+keep in step. `mayBeLivingIn` / `mustBeLivingIn` are the only sanctioned way for a rule to
+ask about the victim: a rule may push the victim out of a room only when every surviving
+pair agrees they were still alive, and may conclude they were dead only when they are
+forced into that room. That is the likeliest source of unsoundness in the whole wave, so
+it is one named chokepoint rather than a thing each rule gets right on its own.
+
+`solver.test.ts` is the guard: random cases, then wave 1's exhaustive solver is asked
+whether anything the deduction solver threw away was actually possible. A new rule joins
+that guard — it is not a convention, it is the only thing between a plausible-looking rule
+and cases that cannot be solved.
 
 *(wave 3)* — the generator pipeline and the measured sim table.

@@ -5,10 +5,11 @@ proven fair by a pure-TypeScript engine, dressed by an LLM whose every sentence 
 verified before the player sees it. Sibling of `../newsignpost` and `../newloopy`
 (solver-backed puzzles) and of `../NewX` (LLM authors, engine verifies).
 
-**The project is in its plan phase. Nothing is built.** The design and the work
-breakdown are in `docs/plan/`. **Read `docs/plan/README.md` in full before doing
-anything**, then the file for the wave you are on. Work one wave at a time and keep the
-status table at the bottom of that README, and the last section of this file, up to date.
+The design and the work breakdown are in `docs/plan/`. **Read `docs/plan/README.md` in
+full before doing anything**, then `docs/ARCHITECTURE.md` (what the code actually does,
+and why, where a choice was open), then the file for the wave you are on. Work one wave
+at a time and keep the status table at the bottom of that README, and the last section of
+this file, up to date.
 
 ## Ask the owner first
 
@@ -118,11 +119,27 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 
 ## State of the project (2026-09-19)
 
-**Wave 0 done.** The toolchain works on this machine: SvelteKit + Svelte 5 + TypeScript,
-Vitest, `vite-node` for Node tools, adapter-static, generated icons, PWA manifest (no
-service worker yet — wave 4). `npm test` green (6 tests, the seeded RNG), `npm run check`
-at 0/0, `npm run build` writes `build/`, `npm run dev` serves on :1430. Nothing of the
-game exists yet beyond `src/lib/engine/rng.ts`. No remote, no deploy.
+**Waves 0 and 1 done. Wave 2 in progress.** 284 tests green in ~2.5s, `npm run check` at
+0/0 over 319 files.
 
-Next step: wave 1 — case model, map, axioms, truth simulation, clue modules, exhaustive
-solver.
+- **Wave 0** — toolchain: SvelteKit + Svelte 5 + Vitest + adapter-static, `vite-node` for
+  Node tools, generated icons, PWA manifest (no service worker yet — wave 4).
+- **Wave 1** — the engine owns the truth. `types.ts`/`axioms.ts` (the contract and
+  `isLegal`), `map/` (recursive dissection, doors, SVG geometry, ASCII view), `clues/`
+  (all 17 kinds behind one registry), `world/simulate.ts`, `solver/exhaustive.ts` (the
+  oracle), `caseId.ts`, `tools/inspect.mjs`.
+- **Wave 2 so far** — `solver/state.ts`, tiers 0 and 1, `solve.ts` and `solver.test.ts`
+  (the soundness oracle). Still to come: tiers 2-4, `difficulty.ts`, `explain.ts`,
+  `hint.ts`.
+
+Things a later wave will want to know, beyond what ARCHITECTURE.md records:
+
+- **`npm run inspect`** prints a floor plan as ASCII and an evening as a person x slot
+  table. It is the fastest way to see what the engine is actually producing.
+- The engine was reviewed adversarially after wave 1 (independent re-implementations of
+  every clue kind, differential fuzzing of the solver against brute-force enumeration of
+  every legal world). No unsoundness was found. What *was* found was that determinism had
+  no guard at all — see `golden.test.ts` and `purity.test.ts`, and ARCHITECTURE.md §6.
+
+Next step: wave 2 tiers 2-4 (counting, trust, hypothesis), then `explain.ts` and
+`hint.ts`.

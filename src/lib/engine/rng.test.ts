@@ -11,9 +11,17 @@ describe("RNG", () => {
   });
 
   it("gives a different sequence for a different seed", () => {
-    const a = Array.from({ length: 16 }, (_, i) => new RNG("a").next() + i);
-    const b = Array.from({ length: 16 }, (_, i) => new RNG("b").next() + i);
+    // The generators are hoisted out of the callback on purpose. Building a
+    // fresh RNG per element would compare two constant-plus-index arrays and
+    // assert only that the FIRST draw of the two seeds differs — an RNG that
+    // then emitted a constant stream would pass.
+    const ra = new RNG("a");
+    const rb = new RNG("b");
+    const a = Array.from({ length: 16 }, () => ra.next());
+    const b = Array.from({ length: 16 }, () => rb.next());
     expect(a).not.toEqual(b);
+    expect(new Set(a).size).toBeGreaterThan(8);
+    expect(new Set(b).size).toBeGreaterThan(8);
   });
 
   it("produces uint32 values and floats in [0, 1)", () => {

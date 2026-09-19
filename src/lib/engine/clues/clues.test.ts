@@ -508,6 +508,47 @@ describe("topicKeys", () => {
     });
   }
 
+  /*
+   * The table above lives on a six-room plan, where every id is a single
+   * digit and a string sort and a numeric sort cannot be told apart. They
+   * part company at ten rooms, and `MAX_ROOMS` is 16.
+   */
+  describe("on a sixteen-room plan", () => {
+    const BIG_PLAN = gridPlan(4, 4);
+    const BIG = frameOf({
+      plan: BIG_PLAN,
+      suspects: 3,
+      slots: 4,
+      murderRoom: 0,
+    });
+
+    it("puts room 6 before room 10", () => {
+      const body: ClueBody = {
+        kind: "BarredDoor",
+        p: 0,
+        door: doorOf(BIG_PLAN, 6, 10),
+      };
+      expect(topicKeys(body, BIG)).toEqual(["person:0", "room:6", "room:10"]);
+    });
+
+    it("groups person, room, slot and sorts each group numerically", () => {
+      for (const door of BIG_PLAN.doors) {
+        const body: ClueBody = {
+          kind: "DoorClosed",
+          door: door.id,
+          from: 1,
+          to: 2,
+        };
+        const lo = Math.min(door.a, door.b);
+        const hi = Math.max(door.a, door.b);
+        expect([door.id, topicKeys(body, BIG)]).toEqual([
+          door.id,
+          [`room:${lo}`, `room:${hi}`, "slot:1", "slot:2"],
+        ]);
+      }
+    });
+  });
+
   it("drops the speaker's own name", () => {
     const clue: Clue = {
       id: "c1",
@@ -529,27 +570,59 @@ describe("topicKeys", () => {
 
 describe("clueMentions", () => {
   it("names a span slot by slot", () => {
-    expect(clueMentions({ kind: "Stayed", p: 2, r: 5, t1: 0, t2: 2 })).toEqual({
-      people: [2],
-      rooms: [5],
-      slots: [0, 1, 2],
-      doors: [],
-    });
+    expect(
+      clueMentions({ kind: "Stayed", p: 2, r: 5, t1: 0, t2: 2 }, FRAME),
+    ).toEqual({ people: [2], rooms: [5], slots: [0, 1, 2], doors: [] });
   });
 
   it("names a door as a door, not as its rooms", () => {
     expect(
-      clueMentions({ kind: "DoorClosed", door: D14, from: 1, to: 2 }),
+      clueMentions({ kind: "DoorClosed", door: D14, from: 1, to: 2 }, FRAME),
     ).toEqual({ people: [], rooms: [], slots: [1, 2], doors: [D14] });
   });
 
   it("lists a mirrored pair ascending, once each", () => {
-    expect(clueMentions({ kind: "Saw", p: 2, q: 1, t: 0, r: 1 })).toEqual({
-      people: [1, 2],
-      rooms: [1],
-      slots: [0],
+    expect(
+      clueMentions({ kind: "Saw", p: 2, q: 1, t: 0, r: 1 }, FRAME),
+    ).toEqual({ people: [1, 2], rooms: [1], slots: [0], doors: [] });
+  });
+
+  it("names the victim for a clue that is only about him", () => {
+    // The notebook highlight and the topic keys come off this one list, so
+    // the card that releases on "tell me about the dead man" must light his
+    // row as well.
+    expect(clueMentions({ kind: "AliveAt", t: 1 }, FRAME)).toEqual({
+      people: [FRAME.victim],
+      rooms: [],
+      slots: [1],
       doors: [],
     });
+    expect(clueMentions({ kind: "DeathWindow", a: 1, b: 3 }, FRAME)).toEqual({
+      people: [FRAME.victim],
+      rooms: [],
+      slots: [1, 2, 3],
+      doors: [],
+    });
+  });
+
+  it("agrees with topicKeys, kind by kind", () => {
+    // The point of the single list: every person, room and slot a card
+    // highlights is a question that releases it, and nothing else is.
+    for (const body of SAMPLES) {
+      const m = clueMentions(body, FRAME);
+      const rooms = new Set(m.rooms);
+      for (const e of m.doors) {
+        rooms.add(PLAN.doors[e].a);
+        rooms.add(PLAN.doors[e].b);
+      }
+      const want = [
+        ...m.people.map((p) => `person:${p}`),
+        ...[...rooms].sort((a, b) => a - b).map((r) => `room:${r}`),
+        ...m.slots.map((t) => `slot:${t}`),
+      ];
+      const name = canonical(body);
+      expect([name, topicKeys(body, FRAME)]).toEqual([name, want]);
+    }
   });
 });
 
@@ -640,10 +713,18 @@ describe("clueHolds", () => {
     }
   });
 
-  it("holds of every sample, from every mouth, lying either way", () => {
+  it("excuses a false statement in exactly one corner of the table", () => {
     // Monotonicity in miniature: nothing the generator could issue from the
-    // true world is refused by the true world.
-    for (const body of SAMPLES) {
+    // true world is refused by the true world. The lie rides along so the
+    // sweep can actually fail — every sample is true in world A, so on its
+    // own it would read `true === true` whatever rule 7 did. A false body is
+    // let through when, and only when, lying is on and its speaker is the
+    // culprit; the other three corners refuse it.
+    const CASES: ReadonlyArray<[ClueBody, boolean]> = [
+      ...SAMPLES.map((b): [ClueBody, boolean] => [b, true]),
+      [lie, false],
+    ];
+    for (const [body, trueInWorld] of CASES) {
       const name = canonical(body);
       for (const frame of [FRAME, LYING]) {
         for (let s = 0; s < frame.suspects; s++) {
@@ -652,7 +733,10 @@ describe("clueHolds", () => {
             body,
             source: { kind: "testimony", speaker: s },
           };
-          expect([name, clueHolds(frame, clue, WORLD)]).toEqual([name, true]);
+          const excused = frame.lying && s === WORLD.culprit;
+          const want = trueInWorld || excused;
+          const where = `${name} by p${s}, lying ${frame.lying}`;
+          expect([where, clueHolds(frame, clue, WORLD)]).toEqual([where, want]);
         }
       }
     }

@@ -90,11 +90,3 @@ export class RNG {
     return weights.length - 1;
   }
 }
-
-/** A short random seed string (base36). Not part of the engine's determinism. */
-export function randomSeed(): string {
-  const n =
-    Math.floor(Math.random() * 0x100000000) * 0x10000 +
-    Math.floor(Math.random() * 0x10000);
-  return n.toString(36);
-}

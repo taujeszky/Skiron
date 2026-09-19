@@ -18,7 +18,7 @@ export const Occupied: KindModule<"Occupied"> = {
   canonical: (b) => `Occupied(r${b.r},t${b.t})`,
   normalise: (b) => b,
   valid: (b, frame) => isRoom(frame, b.r) && isSlot(frame, b.t),
-  topicKeys: (b, frame) => topicKeysFrom(Occupied.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(Occupied.mentions(b, frame), frame),
   mentions: (b) => mentions({ rooms: [b.r], slots: [b.t] }),
 };
 
@@ -28,7 +28,7 @@ export const Empty: KindModule<"Empty"> = {
   canonical: (b) => `Empty(r${b.r},t${b.t})`,
   normalise: (b) => b,
   valid: (b, frame) => isRoom(frame, b.r) && isSlot(frame, b.t),
-  topicKeys: (b, frame) => topicKeysFrom(Empty.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(Empty.mentions(b, frame), frame),
   mentions: (b) => mentions({ rooms: [b.r], slots: [b.t] }),
 };
 
@@ -45,6 +45,6 @@ export const Count: KindModule<"Count"> = {
     Number.isInteger(b.k) &&
     b.k >= 0 &&
     b.k <= frame.people,
-  topicKeys: (b, frame) => topicKeysFrom(Count.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(Count.mentions(b, frame), frame),
   mentions: (b) => mentions({ rooms: [b.r], slots: [b.t] }),
 };

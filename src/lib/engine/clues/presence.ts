@@ -26,7 +26,7 @@ export const At: KindModule<"At"> = {
   normalise: (b) => b,
   valid: (b, frame) =>
     isPerson(frame, b.p) && isSlot(frame, b.t) && isRoom(frame, b.r),
-  topicKeys: (b, frame) => topicKeysFrom(At.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(At.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], rooms: [b.r], slots: [b.t] }),
 };
 
@@ -37,7 +37,7 @@ export const NotAt: KindModule<"NotAt"> = {
   normalise: (b) => b,
   valid: (b, frame) =>
     isPerson(frame, b.p) && isSlot(frame, b.t) && isRoom(frame, b.r),
-  topicKeys: (b, frame) => topicKeysFrom(NotAt.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(NotAt.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], rooms: [b.r], slots: [b.t] }),
 };
 
@@ -66,7 +66,7 @@ export const Stayed: KindModule<"Stayed"> = {
     isSlot(frame, b.t1) &&
     isSlot(frame, b.t2) &&
     b.t1 < b.t2,
-  topicKeys: (b, frame) => topicKeysFrom(Stayed.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(Stayed.mentions(b, frame), frame),
   mentions: (b) =>
     mentions({ people: [b.p], rooms: [b.r], slots: span(b.t1, b.t2) }),
 };
@@ -77,7 +77,7 @@ export const Visited: KindModule<"Visited"> = {
   canonical: (b) => `Visited(p${b.p},r${b.r})`,
   normalise: (b) => b,
   valid: (b, frame) => isPerson(frame, b.p) && isRoom(frame, b.r),
-  topicKeys: (b, frame) => topicKeysFrom(Visited.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(Visited.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], rooms: [b.r] }),
 };
 
@@ -87,7 +87,8 @@ export const NeverVisited: KindModule<"NeverVisited"> = {
   canonical: (b) => `NeverVisited(p${b.p},r${b.r})`,
   normalise: (b) => b,
   valid: (b, frame) => isPerson(frame, b.p) && isRoom(frame, b.r),
-  topicKeys: (b, frame) => topicKeysFrom(NeverVisited.mentions(b), frame),
+  topicKeys: (b, frame) =>
+    topicKeysFrom(NeverVisited.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], rooms: [b.r] }),
 };
 

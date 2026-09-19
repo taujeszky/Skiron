@@ -139,6 +139,42 @@ describe("simulateTruth", () => {
   });
 
   /**
+   * The guarantee `buildFloorPlan` gives too (`map.test.ts`), and for the same
+   * reason: a retry must not shift the draws the rest of the generator makes,
+   * or an old case id would rebuild a different case. The floor is raised so
+   * that this seed really does retry — the test above re-runs from a fresh
+   * RNG and so passes whether an attempt costs the caller a draw or not, and
+   * a version that spent one per attempt would surface only as shipped case
+   * packs quietly regenerating.
+   */
+  it("draws one number from the caller's RNG whatever it takes", () => {
+    const preset = PRESETS[0];
+    const opts: SimOptions = { minVictimCompany: 3 };
+    const req = (plan: FloorPlan) => ({
+      plan,
+      rules: noRules(),
+      suspects: preset.suspects,
+      slots: preset.slots,
+      lying: false,
+    });
+
+    const a = new RNG("stream:0");
+    const plan = buildFloorPlan(a, { rooms: preset.rooms });
+    const result = simulateTruth(a, req(plan), opts);
+    // Measured: 8 failed attempts on this seed. Asserted, not commented, so
+    // the test cannot stop exercising the retry path without saying so.
+    expect(result).not.toBeNull();
+    expect(result?.retries).toBeGreaterThan(0);
+    const after = a.next();
+
+    // One draw for the plan, one for the truth, and nothing else.
+    const b = new RNG("stream:0");
+    b.next();
+    b.next();
+    expect(after).toBe(b.next());
+  });
+
+  /**
    * Measured over 2000 seeds across the four presets with the floors turned
    * off: the victim has company in 90.6% of evenings, for a mean of 2.0
    * slots, and the evening holds a median of 16 meetings (fewer than 3 in
@@ -299,7 +335,8 @@ describe("simulateTruth on what it cannot do", () => {
     const tooMany = { ...req, suspects: 9 };
     expect(() => simulateTruth(new RNG("a"), noSuspects)).toThrow();
     expect(() => simulateTruth(new RNG("a"), tooMany)).toThrow();
-    expect(() => simulateTruth(new RNG("a"), { ...req, slots: 2 })).toThrow();
+    expect(() => simulateTruth(new RNG("a"), { ...req, slots: 1 })).toThrow();
+    expect(() => simulateTruth(new RNG("a"), { ...req, slots: 9 })).toThrow();
     expect(() =>
       simulateTruth(new RNG("a"), req, { murderSlotRange: [3, 1] }),
     ).toThrow();
@@ -311,5 +348,73 @@ describe("simulateTruth on what it cannot do", () => {
     expect(() =>
       simulateTruth(new RNG("a"), req, { maxAttempts: 0 }),
     ).toThrow();
+  });
+
+  /**
+   * Two slots is a legal evening — the validator says 2..8 and means it. What
+   * cannot be done in two slots is the *default* murder slot range, which is
+   * `[1, slots - 2]` and so empty below three. The error names the empty range
+   * rather than the slot count, and a caller who supplies a range gets a case.
+   */
+  it("takes a two-slot evening when it is handed a murder slot", () => {
+    const plan = buildFloorPlan(new RNG("two-slot"), { rooms: 5 });
+    const req = { plan, rules: noRules(), suspects: 4, slots: 2, lying: false };
+
+    expect(() => simulateTruth(new RNG("a"), req)).toThrow(
+      /no murder slot in \[1, 0\]/,
+    );
+
+    const result = simulateTruth(new RNG("a"), req, {
+      murderSlotRange: [1, 1],
+    });
+    expect(result).not.toBeNull();
+    if (!result) return;
+    expect(result.world.murderSlot).toBe(1);
+    expect(isLegal(result.frame, result.world)).toBe(true);
+    checkMurder(result.frame, result.world);
+  });
+
+  /**
+   * A quality floor higher than the evening's own ceiling is a bad request,
+   * not a bad seed: every attempt would fail and the caller would read 200
+   * wasted attempts as an unlucky seed. Wave 3 is the code that turns these
+   * dials, so it is the caller this protects.
+   */
+  it("throws on a quality floor the murder slot puts out of reach", () => {
+    const plan = buildFloorPlan(new RNG("floors"), { rooms: 6 });
+    const req = { plan, rules: noRules(), suspects: 4, slots: 5, lying: false };
+
+    // The victim has company only while alive, so the count cannot beat the
+    // latest murder slot: 3 by default here, 2 when the range says so.
+    expect(() =>
+      simulateTruth(new RNG("a"), req, { minVictimCompany: 4 }),
+    ).toThrow(/minVictimCompany/);
+    expect(() =>
+      simulateTruth(new RNG("a"), req, {
+        murderSlotRange: [1, 2],
+        minVictimCompany: 4,
+      }),
+    ).toThrow(/minVictimCompany/);
+    // A murder in slot 0 against the default floor of 1: nobody could ever
+    // have seen the victim alive, so no seed would have worked.
+    expect(() =>
+      simulateTruth(new RNG("a"), req, { murderSlotRange: [0, 0] }),
+    ).toThrow(/minVictimCompany/);
+    // ...and it is the floor that was impossible, not the range.
+    expect(() =>
+      simulateTruth(new RNG("a"), req, {
+        murderSlotRange: [0, 0],
+        minVictimCompany: 0,
+        maxAttempts: 1,
+      }),
+    ).not.toThrow();
+
+    // Five people over five slots with t* at most 3: 3 * C(5,2) + 2 * C(4,2).
+    expect(() =>
+      simulateTruth(new RNG("a"), req, { minMeetings: 42, maxAttempts: 1 }),
+    ).not.toThrow();
+    expect(() => simulateTruth(new RNG("a"), req, { minMeetings: 43 })).toThrow(
+      /minMeetings/,
+    );
   });
 });

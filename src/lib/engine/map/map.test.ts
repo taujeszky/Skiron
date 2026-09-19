@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { bit } from "../bits";
 import { RNG } from "../rng";
-import type { FloorPlan } from "../types";
+import type { FloorPlan, Room } from "../types";
 import {
+  assemblePlan,
   buildFloorPlan,
   doorAt,
+  draftDoor,
   planConnected,
   planToAscii,
   planToSvg,
@@ -16,6 +18,7 @@ import type { MapOptions } from "./index";
 const DEFAULT_WIDTH = 18;
 const DEFAULT_HEIGHT = 12;
 const DEFAULT_MIN_DIM = 3;
+const DEFAULT_EXTRA_DOORS = 2;
 
 function plan(seed: string, opts: MapOptions): FloorPlan {
   return buildFloorPlan(new RNG(seed), opts);
@@ -56,7 +59,25 @@ function checkPlan(p: FloorPlan, opts: MapOptions): void {
   expect(roomsOverlap(p.rooms)).toBe(false);
   expect(area).toBe(width * height);
 
-  expect(p.rooms.filter((r) => r.outdoor).length).toBe(opts.outdoor ? 1 : 0);
+  // Reading order, left to right and top to bottom. Room ids are quoted in
+  // clues, in save data and in the ASCII picture, so the order is part of
+  // what a plan promises and not an accident of the sort that produced it.
+  for (let i = 1; i < n; i++) {
+    const prev = p.rooms[i - 1].rect;
+    const cur = p.rooms[i].rect;
+    expect(prev.y < cur.y || (prev.y === cur.y && prev.x < cur.x)).toBe(true);
+  }
+
+  const outdoors = p.rooms.filter((r) => r.outdoor);
+  expect(outdoors.length).toBe(opts.outdoor ? 1 : 0);
+  // The terrace is a strip sliced off one side, so it always reaches an edge
+  // of the footprint. A courtyard walled in by the house would be a room the
+  // player has no way to picture as outdoors.
+  for (const r of outdoors) {
+    const { x, y, w, h } = r.rect;
+    const onEdge = x === 0 || y === 0 || x + w === width || y + h === height;
+    expect(onEdge).toBe(true);
+  }
 
   // Doors: one per pair, on a wall the two rooms really share.
   const pairs = new Set<string>();
@@ -94,7 +115,12 @@ function checkPlan(p: FloorPlan, opts: MapOptions): void {
   for (let r = 0; r < n; r++) expect(p.adjacency[r] & bit(r)).toBe(0);
 
   expect(planConnected(p)).toBe(true);
-  expect(p.doors.length).toBeGreaterThanOrEqual(n - 1);
+  // Connectivity already forces at least n - 1 distinct doors, so the bound
+  // worth stating is the other one: `chooseDoors` must hang the first
+  // `extraDoors` spare candidates and leave the rest on the floor.
+  expect(p.doors.length).toBeLessThanOrEqual(
+    n - 1 + (opts.extraDoors ?? DEFAULT_EXTRA_DOORS),
+  );
 }
 
 const SEEDS = 200;
@@ -185,6 +211,41 @@ describe("buildFloorPlan", () => {
     expect(() => plan("nope", { rooms: 5, width: 2, height: 2 })).toThrow(
       /smaller than one room/,
     );
+  });
+});
+
+describe("assemblePlan", () => {
+  /** Three 3x3 rooms in a row: 0 and 2 touch only through 1. */
+  const row: Room[] = [0, 1, 2].map((id) => ({
+    id,
+    rect: { x: id * 3, y: 0, w: 3, h: 3 },
+    outdoor: false,
+  }));
+
+  it("hangs a door only on a wall the two rooms really share", () => {
+    const real = draftDoor(row, 0, 1);
+    expect(real).not.toBeNull();
+    if (real) expect(() => assemblePlan(9, 3, row, [real])).not.toThrow();
+
+    // A hand-built caller's door to nowhere: rooms 0 and 2 are three units
+    // apart, so this would be an edge through the whole of room 1.
+    expect(() =>
+      assemblePlan(9, 3, row, [{ a: 0, b: 2, x: 0, y: 0, wall: "v" }]),
+    ).toThrow(/no wall long enough/);
+
+    // Touching, but along one unit only — too little to draw an opening on.
+    const nick: Room[] = [
+      { id: 0, rect: { x: 0, y: 0, w: 3, h: 3 }, outdoor: false },
+      { id: 1, rect: { x: 3, y: 2, w: 3, h: 3 }, outdoor: false },
+    ];
+    expect(() =>
+      assemblePlan(6, 5, nick, [{ a: 0, b: 1, x: 3, y: 2.5, wall: "v" }]),
+    ).toThrow(/no wall long enough/);
+  });
+
+  it("refuses rooms whose ids are not their indices", () => {
+    const swapped = [row[1], row[0], row[2]];
+    expect(() => assemblePlan(9, 3, swapped, [])).toThrow(/carries id/);
   });
 });
 

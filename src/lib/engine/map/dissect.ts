@@ -198,8 +198,10 @@ function sliceTerrace(
 ): { strip: Rect; rest: Rect } | null {
   // Shallow, as a terrace should be, but never thinner than a room: that
   // keeps "no room is smaller than minDim" true without an exception for the
-  // one room that happens to be outdoors.
-  const depth = Math.max(minDim, 2 + rng.int(2));
+  // one room that happens to be outdoors. The draw starts at minDim rather
+  // than being clamped up to it, because the clamp swallowed it whole — with
+  // the default minDim of 3 the depth came out 3 in all 600 seeds measured.
+  const depth = minDim + rng.int(2);
   const side = rng.int(4);
   if (side === 0 || side === 2) {
     if (area.h - depth < minDim) return null;

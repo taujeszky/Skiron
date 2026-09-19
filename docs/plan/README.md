@@ -346,8 +346,8 @@ docs/                ARCHITECTURE.md (write it as the engine lands), plan/
 | Wave | File | Outcome | Status |
 | --- | --- | --- | --- |
 | 0 | `wave-0-scaffold.md` | Toolchain works on this machine | **done** 2026-09-19 |
-| 1 | `wave-1-model-and-oracle.md` | Case model, truth simulation, exhaustive solver | not started |
-| 2 | `wave-2-deduction-solver.md` | Tiered solver, grading, explanations, hints | not started |
+| 1 | `wave-1-model-and-oracle.md` | Case model, truth simulation, exhaustive solver | **done** 2026-09-19 |
+| 2 | `wave-2-deduction-solver.md` | Tiered solver, grading, explanations, hints | in progress (tiers 0-1, grading) |
 | 3 | `wave-3-generator.md` | Fair cases on demand, sim harness | not started |
 | 4 | `wave-4-playable.md` | The whole game with template text, offline | not started |
 | 5 | `wave-5-llm-authoring.md` | Skins, fidelity check, authoring CLI, in-app generation | not started |

@@ -10,6 +10,7 @@ import {
 } from "./caseId";
 import type { CaseId } from "./caseId";
 import type { PresetName } from "./types";
+import { randomCaseId } from "$lib/util/entropy";
 
 const PRESETS: PresetName[] = ["easy", "normal", "hard", "expert"];
 
@@ -155,16 +156,29 @@ describe("seedFor", () => {
 describe("newCaseId", () => {
   it("stamps the current version and the asked-for preset", () => {
     for (const preset of PRESETS) {
-      const id = newCaseId(preset);
+      const id = newCaseId(preset, "3f9k2a");
       expect(id.version).toBe(CASE_ID_VERSION);
       expect(id.preset).toBe(preset);
+      expect(id.seed).toBe("3f9k2a");
+    }
+  });
+});
+
+describe("randomCaseId", () => {
+  // The entropy lives outside `engine/` so that `purity.test.ts` can be
+  // absolute about the engine reaching for none. This is the one caller.
+  it("always produces a seed that survives a round trip", () => {
+    for (let i = 0; i < 500; i++) {
+      const id = randomCaseId("normal");
+      expect(id.version).toBe(CASE_ID_VERSION);
+      expect(parseCaseId(formatCaseId(id))).toEqual(id);
     }
   });
 
-  it("always produces a seed that survives a round trip", () => {
-    for (let i = 0; i < 500; i++) {
-      const id = newCaseId("normal");
-      expect(parseCaseId(formatCaseId(id))).toEqual(id);
-    }
+  it("does not hand out the same seed every time", () => {
+    const seeds = new Set(
+      Array.from({ length: 200 }, () => randomCaseId("easy").seed),
+    );
+    expect(seeds.size).toBeGreaterThan(190);
   });
 });

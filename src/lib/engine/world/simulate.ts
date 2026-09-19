@@ -18,7 +18,10 @@
  * 3. Walk the victim freely from slot 0 to `t*`, steered into one of those
  *    rooms. Where they end up *is* the murder room `r*`. The player is told
  *    `r*` at the start, so it wants the spread a free walk gives rather than
- *    the flatness of picking a room and dragging the victim to it.
+ *    the flatness of picking a room and dragging the victim to it. Measured
+ *    over 4000 seeds of the 8-room preset, the body lands in each room
+ *    between 10% and 15% of the time against a flat 12.5%: a walk's own
+ *    bias, and no room the case can never use.
  * 4. Walk `c`, with `r*` pinned at `t*`.
  * 5. Walk everyone else, with `r*` struck out from `t*` onwards.
  *
@@ -69,7 +72,9 @@ export interface SimOptions {
       (a multiplier on the weight of an occupied destination). */
   gatherPull?: number;
   /** murder slot is drawn from [1, slots-2] by default so someone can have
-      seen the victim alive and the killer has somewhere to go afterwards. */
+      seen the victim alive and the killer has somewhere to go afterwards.
+      That default is empty below three slots, so a two-slot evening is legal
+      but has to say [1, 1] for itself. */
   murderSlotRange?: [number, number];
   maxAttempts?: number; // default 200
   /** Quality floor: how many two-person co-locations the evening must hold,
@@ -113,8 +118,11 @@ const DEFAULT_MIN_VICTIM_COMPANY = 1;
  * A legal world for `req`, or null if `maxAttempts` attempts all failed.
  *
  * Null means bad luck, not a bad request: a malformed request throws instead,
- * so a caller's mistake cannot hide as an unlucky seed. At the sizes the
- * presets use, null essentially never happens — `simulate.test.ts` pins that.
+ * so a caller's mistake cannot hide as an unlucky seed. A quality floor above
+ * the ceiling the murder slot leaves counts as malformed too — wave 3 is the
+ * code that turns these dials, and it should hear about an impossible ask on
+ * the first seed rather than on the four hundredth. At the sizes the presets
+ * use, null essentially never happens — `simulate.test.ts` pins that.
  *
  * As in `buildFloorPlan`, it draws exactly one number from the caller's stream
  * however many attempts it needs, and runs each attempt on an RNG derived from
@@ -482,13 +490,43 @@ function resolveOptions(req: TruthRequest, opts: SimOptions): Spec {
       "SimOptions.maxAttempts must be a whole number of at least 1",
     );
   }
+  // Both quality floors are counted over an evening the murder slot has
+  // already cut in two, so each has a ceiling no seed can reach past. Asking
+  // for more is a caller's mistake that would otherwise surface as every
+  // attempt failing, which reads exactly like bad luck.
+  const pairs = (k: number) => (k * (k - 1)) / 2;
   const minMeetings = opts.minMeetings ?? DEFAULT_MIN_MEETINGS;
   if (!whole(minMeetings) || minMeetings < 0) {
     throw new Error("SimOptions.minMeetings must be a whole number >= 0");
   }
+  // Before t* all `people` could crowd into one room; from t* on the victim
+  // has stopped counting and only the suspects can. A slot is therefore worth
+  // more before the murder than after it, so the ceiling sits at t* = hi.
+  // Bars and capacities only lower it, so this rejects nothing a map might
+  // have managed.
+  const maxMeetings =
+    hi * pairs(req.suspects + 1) + (req.slots - hi) * pairs(req.suspects);
+  if (minMeetings > maxMeetings) {
+    throw new Error(
+      `SimOptions.minMeetings of ${minMeetings} is out of reach: ` +
+        `${req.suspects + 1} people over ${req.slots} slots, with the murder ` +
+        `no later than slot ${hi}, hold at most ${maxMeetings} meetings`,
+    );
+  }
   const minVictimCompany = opts.minVictimCompany ?? DEFAULT_MIN_VICTIM_COMPANY;
   if (!whole(minVictimCompany) || minVictimCompany < 0) {
     throw new Error("SimOptions.minVictimCompany must be a whole number >= 0");
+  }
+  // The victim only has company while alive, so the count runs over slots
+  // 0..t*-1 and cannot beat `hi`. This is what catches the default floor of 1
+  // against a murder in slot 0, where the victim is dead before anyone could
+  // have seen them.
+  if (minVictimCompany > hi) {
+    throw new Error(
+      `SimOptions.minVictimCompany of ${minVictimCompany} is out of reach: ` +
+        `the murder falls no later than slot ${hi}, so the victim has ` +
+        `company in at most ${hi} slots`,
+    );
   }
 
   return {

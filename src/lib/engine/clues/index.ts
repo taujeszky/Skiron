@@ -117,9 +117,13 @@ export function topicKeys(body: ClueBody, frame: CaseFrame): TopicKey[] {
   return moduleOf(body).topicKeys(body, frame);
 }
 
-/** Every person, room, slot and door the clue names, for highlighting. */
-export function clueMentions(body: ClueBody): Mentions {
-  return moduleOf(body).mentions(body);
+/**
+ * Every person, room, slot and door the clue names, for highlighting. Takes
+ * the frame because `AliveAt` and `DeathWindow` name the victim without
+ * carrying his id, and the same list is what `topicKeys` is built from.
+ */
+export function clueMentions(body: ClueBody, frame: CaseFrame): Mentions {
+  return moduleOf(body).mentions(body, frame);
 }
 
 /* ------------------------------------------------------------- the clue */

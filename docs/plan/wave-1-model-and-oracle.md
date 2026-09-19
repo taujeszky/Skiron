@@ -13,9 +13,13 @@ engine.
 ## Tasks
 
 1. **`engine/types.ts`.** `Case` parameters, `RoomId`/`PersonId`/`SlotIndex`, `FloorPlan`,
-   `World` (`loc`, `culprit`, `murderSlot`, `murderRoom`), the `Clue` union, `Source`
+   `World` (`loc`, `culprit`, `murderSlot`), the `Clue` union, `Source`
    (`fact` | `testimony(s)`), `lying: boolean`. Use small integer ids and bitmask-friendly
    sizes (at most 16 rooms, 8 people, 8 slots) — both solvers want bitmask domains.
+   *As built: `murderRoom` sits on `CaseFrame`, not on `World`, because the player is told
+   it at the start. `CaseFrame` is everything the player knows and `World` is the truth,
+   which is what makes "this prompt cannot leak the answer" checkable from a signature —
+   see ARCHITECTURE.md §1.*
 2. **`engine/map/`.** Rectangular dissection of a footprint into 5–9 rooms with a minimum
    room size; doors on shared wall segments long enough to hold one — a spanning tree
    first, then a few extra doors so there are cycles; optionally one outdoor room on the
@@ -23,13 +27,22 @@ engine.
    rectangles, door positions), so the picture can never disagree with the graph. Support
    door closures per transition and per-person bars in the data model now, even though the
    generator chooses them later.
-3. **`engine/axioms.ts`.** `isLegal(world, plan, rules)` checking rules 1–5 exactly as the
-   README states them. This is the definition everything else is tested against; keep it
-   short and obviously correct.
-4. **`engine/world/simulate.ts`.** Seeded truth simulation: choose culprit, slot and room;
+3. **`engine/axioms.ts`.** `isLegal(frame, world)` checking rules 1–5 exactly as the
+   README states them (the plan and the rules travel on the frame). This is the definition
+   everything else is tested against; keep it short and obviously correct.
+   *As built, it also had to settle a question the README leaves open: whether the victim
+   counts as somebody being in a room. It does, until the murder slot; the body never does.
+   ARCHITECTURE.md §2 has the reasoning and the consequences.*
+4. **`engine/world/simulate.ts`.** Seeded truth simulation: choose culprit and slot;
    walk everyone with a stay-probability and a pull towards shared rooms so that paths
    cross; guarantee the murder is unwitnessed and rule 5 holds. Retry on failure and count
    retries — that number goes into the wave 3 sim table.
+   *As built, the murder **room** is not chosen: the victim walks freely and wherever they
+   are at `t*` is `r*`. Picking a room first and dragging the victim to it flattens the
+   spread; a free walk lands the body in each of eight rooms 10–15% of the time against a
+   flat 12.5% (measured over four independent 4000-seed families). Rules 4 and 5 hold by
+   construction rather than by rejection: the killer is steered to meet the victim, and
+   everyone else walks with `r*` swept out of their allowance from `t*` on.*
 5. **`engine/clues/`.** One module per core clue type plus a registry. In this wave each
    provides `holds(clue, world)`, `canonical(clue)` with normalisation (so `Saw(p,q,t,r)`
    and its mirrored spelling compare equal where they mean the same), and

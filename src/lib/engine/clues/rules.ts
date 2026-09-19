@@ -72,7 +72,7 @@ export const DoorClosed: KindModule<"DoorClosed"> = {
     isSlot(frame, b.from) &&
     isSlot(frame, b.to) &&
     b.from < b.to,
-  topicKeys: (b, frame) => topicKeysFrom(DoorClosed.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(DoorClosed.mentions(b, frame), frame),
   mentions: (b) => mentions({ doors: [b.door], slots: span(b.from, b.to) }),
 };
 
@@ -87,7 +87,7 @@ export const BarredDoor: KindModule<"BarredDoor"> = {
   canonical: (b) => `BarredDoor(p${b.p},e${b.door})`,
   normalise: (b) => b,
   valid: (b, frame) => isPerson(frame, b.p) && isDoor(frame, b.door),
-  topicKeys: (b, frame) => topicKeysFrom(BarredDoor.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(BarredDoor.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], doors: [b.door] }),
 };
 
@@ -102,7 +102,7 @@ export const BarredRoom: KindModule<"BarredRoom"> = {
   canonical: (b) => `BarredRoom(p${b.p},r${b.r})`,
   normalise: (b) => b,
   valid: (b, frame) => isPerson(frame, b.p) && isRoom(frame, b.r),
-  topicKeys: (b, frame) => topicKeysFrom(BarredRoom.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(BarredRoom.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], rooms: [b.r] }),
 };
 
@@ -121,6 +121,6 @@ export const Capacity: KindModule<"Capacity"> = {
   // A cap of zero would be a room nobody may enter, which is `BarredRoom` for
   // everyone and would make the murder room unusable.
   valid: (b, frame) => isRoom(frame, b.r) && Number.isInteger(b.k) && b.k >= 1,
-  topicKeys: (b, frame) => topicKeysFrom(Capacity.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(Capacity.mentions(b, frame), frame),
   mentions: (b) => mentions({ rooms: [b.r] }),
 };

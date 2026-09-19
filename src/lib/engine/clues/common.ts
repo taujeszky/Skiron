@@ -6,7 +6,10 @@
  * ids the clue names — because two separate things are built from exactly
  * that list: the notebook highlight, and the topic keys that release the clue
  * under questioning. Deriving both from one function is the only way they
- * cannot drift apart.
+ * cannot drift apart, which is why `mentions` is handed the frame as well:
+ * `AliveAt` and `DeathWindow` are about the victim without carrying a person
+ * id, and feeding the victim to the topic keys alone would have left the
+ * notebook refusing to light his row for the very card that named him.
  */
 
 import { topic } from "../types";
@@ -32,7 +35,7 @@ export interface Mentions {
 
 /** A clue module as this directory writes it: the contract plus `mentions`. */
 export interface KindModule<K extends ClueKind> extends ClueModule<K> {
-  mentions(body: BodyOf<K>): Mentions;
+  mentions(body: BodyOf<K>, frame: CaseFrame): Mentions;
 }
 
 function sortUnique(xs: readonly number[]): number[] {
@@ -69,29 +72,26 @@ export function span(a: SlotIndex, b: SlotIndex): SlotIndex[] {
 /**
  * Topic keys from the ids a clue names. A door contributes both the rooms it
  * joins, because a door is not something the player can ask about — rooms,
- * people and hours are. `alsoPeople` carries the one case a body cannot name
- * itself: `AliveAt` and `DeathWindow` are about the victim without mentioning
- * them.
+ * people and hours are.
  *
- * Sorted as plain strings, which happens to group them person / room / slot.
+ * Grouped person / room / slot, and numeric inside each group. Sorting the
+ * finished strings would do neither reliably: `MAX_ROOMS` is 16, and
+ * `"room:10"` sorts before `"room:6"`. The order is not load-bearing for
+ * determinism — a string sort is stable too — but waves 5 and 6 hand these
+ * lists to the model, and a list that jumps 10, 11, 6 reads like a bug.
  */
-export function topicKeysFrom(
-  m: Mentions,
-  frame: CaseFrame,
-  alsoPeople: readonly PersonId[] = [],
-): TopicKey[] {
-  const keys = new Set<TopicKey>();
-  for (const p of m.people) keys.add(topic.person(p));
-  for (const p of alsoPeople) keys.add(topic.person(p));
-  for (const r of m.rooms) keys.add(topic.room(r));
+export function topicKeysFrom(m: Mentions, frame: CaseFrame): TopicKey[] {
+  const rooms = [...m.rooms];
   for (const e of m.doors) {
     const door = frame.plan.doors[e];
     if (!door) continue;
-    keys.add(topic.room(door.a));
-    keys.add(topic.room(door.b));
+    rooms.push(door.a, door.b);
   }
-  for (const t of m.slots) keys.add(topic.slot(t));
-  return [...keys].sort();
+  return [
+    ...sortUnique(m.people).map((p) => topic.person(p)),
+    ...sortUnique(rooms).map((r) => topic.room(r)),
+    ...sortUnique(m.slots).map((t) => topic.slot(t)),
+  ];
 }
 
 /* --------------------------------------------------- structural validity */

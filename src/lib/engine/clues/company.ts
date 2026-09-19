@@ -32,7 +32,7 @@ export const Saw: KindModule<"Saw"> = {
     isPerson(frame, b.q) &&
     isSlot(frame, b.t) &&
     isRoom(frame, b.r),
-  topicKeys: (b, frame) => topicKeysFrom(Saw.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(Saw.mentions(b, frame), frame),
   mentions: (b) =>
     mentions({ people: [b.p, b.q], rooms: [b.r], slots: [b.t] }),
 };
@@ -54,7 +54,7 @@ export const Together: KindModule<"Together"> = {
     isPerson(frame, b.p) &&
     isPerson(frame, b.q) &&
     isSlot(frame, b.t),
-  topicKeys: (b, frame) => topicKeysFrom(Together.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(Together.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p, b.q], slots: [b.t] }),
 };
 
@@ -65,6 +65,6 @@ export const AloneIn: KindModule<"AloneIn"> = {
   normalise: (b) => b,
   valid: (b, frame) =>
     isPerson(frame, b.p) && isSlot(frame, b.t) && isRoom(frame, b.r),
-  topicKeys: (b, frame) => topicKeysFrom(AloneIn.mentions(b), frame),
+  topicKeys: (b, frame) => topicKeysFrom(AloneIn.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], rooms: [b.r], slots: [b.t] }),
 };

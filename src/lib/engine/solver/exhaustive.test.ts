@@ -764,7 +764,16 @@ describe("housekeeping", () => {
     expect(answerKey({ culprit: 1, slot: 2 })).not.toBe(
       answerKey({ culprit: 2, slot: 1 }),
     );
-    const open = answers(tiny(), []);
-    expect(keysOf(open)).toEqual([...keysOf(open)].sort());
+    // Asserted literally, not against a sorted copy of the solver's own
+    // output: that version would have passed on an empty answer set, which is
+    // precisely the regression an ordering test is there to catch.
+    expect(keysOf(answers(tiny(), []))).toEqual([
+      "c0t0",
+      "c0t1",
+      "c0t2",
+      "c1t0",
+      "c1t1",
+      "c1t2",
+    ]);
   });
 });

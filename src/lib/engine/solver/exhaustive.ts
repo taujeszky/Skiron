@@ -50,17 +50,34 @@ import type {
 } from "../types";
 
 export interface SearchOptions {
-  /** Abort with an error rather than silently returning a wrong result. Default 5e6. */
+  /** Abort with an error rather than silently returning a wrong result. */
   nodeLimit?: number;
 }
 
 /**
- * Generous enough that no honest case comes near it, small enough that a
- * runaway search fails in seconds. Exceeding it means a bug somewhere, and
- * the generator would far rather crash in development than ship an unfair
- * case.
+ * The work cap, chosen by measuring rather than by feel.
+ *
+ * Measured on this machine (win32-arm64, node 22): the search runs at about
+ * **35,000 nodes/s** on the largest preset shape — 9 rooms, 7 people, 8 slots
+ * — so this budget is a ceiling of roughly four seconds. Honest cases are
+ * nowhere near it: over 40 seeds of that same shape with true clues of a real
+ * evening, a whole `answers` call took p50 0.4 ms and at worst 1.7 ms.
+ *
+ * It was 5e6, on the reasoning that "a runaway search fails in seconds". That
+ * was wrong by two orders of magnitude — 5e6 nodes is about 143 seconds — and
+ * it matters, because `answers` is wave 3's final per-case assertion and runs
+ * in a Web Worker, where the symptom would be a two-minute stall rather than
+ * a fast crash.
+ *
+ * Note also that exhausting it does NOT imply a bug. A clue set whose
+ * unsatisfiability is a counting argument — several `Capacity`, `Count` or
+ * `Empty` cards that together make a pigeonhole — has to be enumerated,
+ * because `atMost`/`atLeast` only fire when `forced === k` or
+ * `possible === k` and never make a global cardinality argument. The
+ * generator should not produce such sets; if the wave-3 sim table says it
+ * does, that is the signal to add the cardinality check, not to raise this.
  */
-const DEFAULT_NODE_LIMIT = 5e6;
+const DEFAULT_NODE_LIMIT = 1.5e5;
 
 /** A stable key for an answer, so a test can compare whole answer sets. */
 export function answerKey(a: Answer): string {

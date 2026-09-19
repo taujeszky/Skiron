@@ -7,7 +7,6 @@
  * hands the RNG is frozen: see `seedFor`.
  */
 
-import { randomSeed } from "./rng";
 import type { PresetName } from "./types";
 
 /**
@@ -99,10 +98,11 @@ export function seedFor(id: CaseId, attempt: number): string {
 }
 
 /**
- * A fresh id with a random seed. `randomSeed()` uses `Math.random`, so this is
- * the one impure function in the file — the engine never calls it; the UI and
- * the authoring CLI do, and then generation is deterministic from the ID.
+ * An id at the current version from a seed the caller supplies. It takes the
+ * seed rather than inventing one so that `engine/` stays free of entropy —
+ * `util/entropy.ts#randomCaseId` is the impure convenience, and it lives
+ * outside the engine precisely so the purity test can be absolute.
  */
-export function newCaseId(preset: PresetName): CaseId {
-  return { version: CASE_ID_VERSION, preset, seed: randomSeed() };
+export function newCaseId(preset: PresetName, seed: string): CaseId {
+  return { version: CASE_ID_VERSION, preset, seed };
 }

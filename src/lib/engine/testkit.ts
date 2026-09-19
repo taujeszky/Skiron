@@ -7,6 +7,7 @@
  */
 
 import { assemblePlan, draftDoor } from "./map/plan";
+import type { DoorDraft } from "./map/plan";
 import type {
   CaseFrame,
   CaseRules,
@@ -41,21 +42,32 @@ export function gridPlan(
       });
     }
   }
-  const drafts = [];
+  const drafts: DoorDraft[] = [];
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
       const id = y * cols + x;
-      if (x + 1 < cols) {
-        const d = draftDoor(rooms, id, id + 1);
-        if (d) drafts.push(d);
-      }
-      if (y + 1 < rows) {
-        const d = draftDoor(rooms, id, id + cols);
-        if (d) drafts.push(d);
-      }
+      if (x + 1 < cols) drafts.push(mustDraft(rooms, id, id + 1));
+      if (y + 1 < rows) drafts.push(mustDraft(rooms, id, id + cols));
     }
   }
   return assemblePlan(cols * size, rows * size, rooms, drafts);
+}
+
+/**
+ * Neighbours in a grid share a whole wall, so the only way `draftDoor`
+ * refuses one is a `size` below the minimum a door needs. Shout about it:
+ * skipping the door instead would hand back a doorless house in which nobody
+ * can move, and a property test over the worlds such a house allows would
+ * pass while proving nothing.
+ */
+function mustDraft(rooms: readonly Room[], a: RoomId, b: RoomId): DoorDraft {
+  const d = draftDoor(rooms, a, b);
+  if (!d) {
+    throw new Error(
+      `gridPlan: rooms ${a} and ${b} are too small to hang a door between`,
+    );
+  }
+  return d;
 }
 
 /**
