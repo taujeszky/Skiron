@@ -64,3 +64,97 @@ always tries the lowest tier first, `nextDeduction` for hints.
 
 - All green. Until wave 3 exists, exercise the solver on hand-built cases and on "all true
   clues" sets from wave 1's simulator, which it should finish at a low tier.
+
+---
+
+## As built so far (2026-09-19)
+
+Landed and committed: `solver/state.ts`, `solver/rules/tier0.ts`, `solver/rules/tier1.ts`,
+`solver/solve.ts`, `solver/solver.test.ts`. 284 tests green, `npm run check` at 0/0.
+
+### One deviation from the plan above, recorded as CLAUDE.md requires
+
+**Candidates are (culprit, slot) pairs, not two flat sets.** Task 1 above asks for
+"candidate culprits, candidate murder slots". The code keeps `state.answer[suspect]` — a
+mask of the slots still possible as `t*` *if that suspect did it*. Pairs are strictly
+stronger and are how a person reasons: *"if it was the Colonel it must have been at nine,
+and he was in the hall at nine, so it was not the Colonel"* cannot be expressed by two
+independent sets, which would have to keep both the Colonel and nine o'clock alive.
+Fairness is defined on pairs (ARCHITECTURE.md §4), so it is also the right granularity for
+an elimination. `culpritMask()` and `slotMask()` derive the flat views where a caller
+wants them.
+
+Two further decisions, both in ARCHITECTURE.md §7:
+
+- **Trust is derived, never stored.** `trusted = lying ? allSuspects & ~culprits :
+  allSuspects`. Clearing a suspect *is* trusting them, so there is no second structure to
+  keep in step.
+- **`mayBeLivingIn` / `mustBeLivingIn` are the only sanctioned way for a rule to ask about
+  the victim.** A rule may push the victim out of a room only when every surviving pair
+  agrees they were alive then, and may conclude they were dead only when they are *forced*
+  into that room. This is the likeliest source of unsoundness in the wave, so it is one
+  named chokepoint rather than a thing each rule gets right on its own.
+
+### What exists
+
+- **`state.ts`** — `SolverState`, `SolverContext`, the derived views, and the only
+  sanctioned mutators: `restrict`, `removeRooms`, `killPairs`, `killSlots`,
+  `clearSuspects`, `contradict`. Every mutation notices whether it changed anything,
+  notices an emptied domain, and records a `Step`. A rule that pokes `state.dom` directly
+  is a rule whose deduction the hint system cannot explain.
+  `RuleId` is a **closed union and the single source of truth** — it already names the
+  tier 2, 3 and 4 rules. `explain.ts` must render every member and a test must prove it,
+  so adding a rule forces you to give it a sentence.
+- **`tier0.ts`** — direct clue application (`At`, `NotAt`, `Stayed`, `Saw`, `AloneIn`,
+  `Empty`, `NeverVisited`, `AliveAt`, `DeathWindow`, plus the liveness half of `Together`)
+  and the murder axioms: `body-at-end` (the body is certainly in `r*` in the last slot,
+  since `t* <= T-1`), `opportunity`, `witness-in-room` (rule 4), `sealed-after` and
+  `sealed-back` (rule 5, both directions), `victim-not-yet-dead`, and the endgame pin when
+  one pair is left.
+- **`tier1.ts`** — arc consistency along each person's timeline, both directions, over
+  `movementMasks`. Deliberately no bespoke multi-slot rule: repetition to a fixpoint *is*
+  the multi-slot consequence.
+- **`solve.ts`** — the pipeline. `TIERS` is an array and **the array order is the tier
+  order**; appending tiers 2 to 4 is the whole wiring job. `runToFixpoint` restarts from
+  tier 0 after any tier fires, so a tier only ever fires when every cheaper tier is
+  saturated, which is what makes the grade meaningful. `TRIAL_BUDGET` is declared here
+  (20000, a *starting point* — it is part of the grade, invariant 10).
+- **`solver.test.ts`** — the soundness oracle. 120 random cases across four sizes, with
+  the culprit lying freely, asserting that nothing the deduction solver removed is
+  `cellPossible` or `answerPossible`, that the truth is never eliminated, and that a
+  finished run names it. It also guards itself: it asserts that >90% of cases actually
+  deduced something, so a solver that stopped working could not pass vacuously.
+  **A new rule joins this guard.**
+
+## Still to do
+
+1. **`rules/tier2.ts` — counting.** `Occupied` with one candidate left; `Count` and
+   `Capacity` (`|must| = k` excludes everyone else, `|can| = k` forces all of `can` in);
+   `Visited` with one slot left; `Together` room equality (`dom[p][t] &= dom[q][t]` and
+   back). Every one of these must go through `mayBeLivingIn`/`mustBeLivingIn` for the
+   victim — a counting rule that reads the victim's raw domain is the classic way to make
+   this tier unsound.
+2. **`rules/tier3.ts` — trust (lying only).** Both are bounded scratch runs using tiers
+   0–2 only (`branch(d)` then `runToFixpoint(b, 2)`).
+   - *Self-incrimination*: assume suspect `s`'s testimony alongside the facts; a
+     contradiction means `s` **is** the culprit, because an innocent `s` would have been
+     telling the truth. Collapse `answer` to `s`'s row.
+   - *Conflict pair*: assume `s1`'s and `s2`'s testimony together; a contradiction means
+     one of them did it, so clear everyone else.
+3. **`rules/tier4.ts` — hypothesis.** Depth 1, capped by `TRIAL_BUDGET`. Assume, propagate
+   with tiers 0–3, eliminate on contradiction. Three flavours, cheapest first: a culprit
+   (which trusts every other suspect at once — the big win), a slot, then a **pair**.
+   Pair trials are not optional: culprit-only and slot-only trials can leave two pairs
+   alive in one row, and "finished" means one pair.
+4. **`difficulty.ts`** — tier ↔ name (Easy ≤ 1, Normal ≤ 2, Hard = 3, Expert = 4; Hard and
+   Expert have lying on) and the preset size table. The *actual* tier is authoritative and
+   is what the UI shows, as in Signpost.
+5. **`explain.ts`** — `clueSentence` and `stepSentence`, over the `Conclusion` union in
+   `state.ts` (`room-set`, `rooms-out`, `pairs-out`, `cleared`, `slots-out`,
+   `contradiction`). Conclusions are data, not prose, precisely so the same step renders as
+   "Suspect B" with no skin and "Mrs Hale" with one — and in Hungarian in wave 9.
+6. **`hint.ts`** — the three branches in the order the plan gives.
+
+Note for whoever writes tier 2: `tier0.ts` deliberately leaves `Occupied`, `Count` and
+`Visited` alone, and takes only the liveness half of `Together`. That is not an oversight,
+it is the tier boundary.
