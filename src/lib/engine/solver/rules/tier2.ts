@@ -121,9 +121,18 @@ function ruleOutLiving(
   rule: RuleId,
   premises: Premises,
 ): void {
-  const V = d.ctx.frame.victim;
+  const { frame } = d.ctx;
+  const V = frame.victim;
   if (p !== V) {
     removeRooms(d, p, t, bit(r), rule, TIER, premises);
+    return;
+  }
+  // Away from the body's room the disjunction is not a disjunction at all.
+  // Alive, and this card says they were not here; dead, and rule 5 has them
+  // lying in `r*`, which this is not. Either way they were not in `r`, and no
+  // guard is needed to say so.
+  if (r !== frame.murderRoom) {
+    removeRooms(d, V, t, bit(r), rule, TIER, premises);
     return;
   }
   const live = slotMask(d.state);

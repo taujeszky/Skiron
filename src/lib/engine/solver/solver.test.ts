@@ -287,20 +287,33 @@ describe("grading", () => {
       expect(full.tier).toBeGreaterThanOrEqual(0);
       seen.add(full.tier);
 
-      // Capping at the reported tier must change nothing: if it did, the
-      // grade would be understating what the case demands.
+      // Capping at the reported tier must leave the ANSWER untouched. Not the
+      // grid: rules go on tidying room domains after the answer is settled,
+      // and those firings are deliberately not counted towards the grade —
+      // otherwise a case tier 0 solves outright could be graded Normal
+      // because some tier-2 rule later trimmed a room nobody cared about.
       const atGrade = solve(frame, clues, { maxTier: full.tier });
-      expect(atGrade.state.dom).toEqual(full.state.dom);
       expect(atGrade.state.answer).toEqual(full.state.answer);
+      expect(atGrade.finished).toBe(full.finished);
 
-      // And the tier below must be genuinely weaker somewhere, or the grade
-      // is overstating it. (Only meaningful once there is a tier below.)
       if (full.tier > 0) {
         const below = solve(frame, clues, { maxTier: full.tier - 1 });
-        const weaker =
-          JSON.stringify(below.state.dom) !== JSON.stringify(full.state.dom) ||
-          JSON.stringify(below.state.answer) !== JSON.stringify(full.state.answer);
-        expect(weaker, `tier ${full.tier} fired but changed nothing`).toBe(true);
+        if (full.finished) {
+          // The grade is exactly the cheapest cap at which the case still
+          // finishes. If the tier below finishes too, the grade is a lie and
+          // an Easy player is being handed an Expert badge, or worse.
+          expect(
+            below.finished,
+            `graded tier ${full.tier}, but tier ${full.tier - 1} finishes it`,
+          ).toBe(false);
+        } else {
+          // It never settled, so the grade is the hardest tier that did
+          // anything at all, and the tier below must do strictly less.
+          const weaker =
+            JSON.stringify(below.state.dom) !== JSON.stringify(full.state.dom) ||
+            JSON.stringify(below.state.answer) !== JSON.stringify(full.state.answer);
+          expect(weaker, `tier ${full.tier} fired but changed nothing`).toBe(true);
+        }
       }
     }
     expect(cases.length).toBeGreaterThan(200);

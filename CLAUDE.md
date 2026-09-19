@@ -119,27 +119,35 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 
 ## State of the project (2026-09-19)
 
-**Waves 0 and 1 done. Wave 2 in progress.** 284 tests green in ~2.5s, `npm run check` at
-0/0 over 319 files.
+**Waves 0, 1 and 2 done.** 381 tests green in ~2.5s, `npm run check` at 0/0 over 330 files.
 
-- **Wave 0** — toolchain: SvelteKit + Svelte 5 + Vitest + adapter-static, `vite-node` for
-  Node tools, generated icons, PWA manifest (no service worker yet — wave 4).
-- **Wave 1** — the engine owns the truth. `types.ts`/`axioms.ts` (the contract and
+- **Wave 0** - toolchain: SvelteKit + Svelte 5 + Vitest + adapter-static, `vite-node` for
+  Node tools, generated icons, PWA manifest (no service worker yet - wave 4).
+- **Wave 1** - the engine owns the truth. `types.ts`/`axioms.ts` (the contract and
   `isLegal`), `map/` (recursive dissection, doors, SVG geometry, ASCII view), `clues/`
   (all 17 kinds behind one registry), `world/simulate.ts`, `solver/exhaustive.ts` (the
   oracle), `caseId.ts`, `tools/inspect.mjs`.
-- **Wave 2 so far** — `solver/state.ts`, tiers 0 and 1, `solve.ts` and `solver.test.ts`
-  (the soundness oracle). Still to come: tiers 2-4, `difficulty.ts`, `explain.ts`,
-  `hint.ts`.
+- **Wave 2** - the deduction solver and everything the player reads. `solver/state.ts`,
+  five tiers under `solver/rules/`, `solve.ts`, `difficulty.ts`, `explain.ts` (a sentence
+  for all 17 clue kinds and all 28 rules), `hint.ts` (the three hint branches, the
+  notebook, and the Check).
+
+Next: wave 3, the generator and the sim harness.
 
 Things a later wave will want to know, beyond what ARCHITECTURE.md records:
 
 - **`npm run inspect`** prints a floor plan as ASCII and an evening as a person x slot
   table. It is the fastest way to see what the engine is actually producing.
-- The engine was reviewed adversarially after wave 1 (independent re-implementations of
-  every clue kind, differential fuzzing of the solver against brute-force enumeration of
-  every legal world). No unsoundness was found. What *was* found was that determinism had
-  no guard at all — see `golden.test.ts` and `purity.test.ts`, and ARCHITECTURE.md §6.
-
-Next step: wave 2 tiers 2-4 (counting, trust, hypothesis), then `explain.ts` and
-`hint.ts`.
+- **Waves 1 and 2 were each reviewed adversarially** after they were finished, with every
+  finding sent to independent verifiers told to refute it. Both reviews earned their keep,
+  and in the same way: neither found unsoundness, and both found something a green suite
+  could not see. In wave 1 it was that determinism had no guard at all (hence
+  `golden.test.ts` and `purity.test.ts`). In wave 2 it was that following every hint left
+  the player unable to accuse, because a step recorded which pairs it removed but not
+  which suspect that cleared - and the tests asked whether hints were true and whether
+  they stopped, never whether they got the player anywhere. See ARCHITECTURE.md section 8.
+- **The habit worth keeping**: after a wave, plant deliberate bugs and check the suite
+  notices. That is what found both the hypothesis-depth gap and the untested chokepoints
+  in `state.ts`. A surviving mutant is either a missing test or an equivalent mutant, and
+  which one it is has to be established rather than assumed - the ones established as
+  equivalent are documented where they live.

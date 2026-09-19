@@ -321,9 +321,27 @@ export interface Premises {
 export type Conclusion =
   | { kind: "rooms-out"; p: PersonId; t: SlotIndex; rooms: number }
   | { kind: "room-set"; p: PersonId; t: SlotIndex; r: RoomId }
-  | { kind: "pairs-out"; pairs: Answer[] }
-  | { kind: "cleared"; suspects: PersonId[] }
-  | { kind: "slots-out"; slots: SlotIndex[] }
+  /**
+   * A cut into the answer set.
+   *
+   * It carries three things, and the last two are the ones that matter to
+   * anybody downstream: the pairs that went, the suspects that leaves in the
+   * clear, and the hours it closes for everybody at once.
+   *
+   * The pairs alone are not enough, and that is the whole reason this shape
+   * exists. `killPairs` sweeps whatever is still alive, so the same
+   * elimination arrives as a different set of pairs depending on what has
+   * already been crossed off — and from the pairs by themselves a reader
+   * cannot tell whether a suspect has just been cleared. A player's notebook
+   * holds exactly "cleared" and "closed" and nothing finer, so a step that
+   * did not say so was a step the notebook could not record.
+   */
+  | {
+      kind: "answer-cut";
+      pairs: Answer[];
+      cleared: PersonId[];
+      closed: SlotIndex[];
+    }
   | { kind: "contradiction" };
 
 export interface Step {
@@ -456,7 +474,8 @@ export function killPairs(
 ): boolean {
   const { answer } = d.state;
   const removed: Answer[] = [];
-  const clearedNow: PersonId[] = [];
+  const cleared: PersonId[] = [];
+  const slotsBefore = slotMask(d.state);
   for (let s = 0; s < answer.length; s++) {
     if (answer[s] === 0) continue;
     let next = answer[s];
@@ -468,24 +487,26 @@ export function killPairs(
     }
     if (next !== answer[s]) {
       answer[s] = next;
-      if (next === 0) clearedNow.push(s);
+      if (next === 0) cleared.push(s);
     }
   }
   if (removed.length === 0) return false;
   d.changed = true;
   d.nodes += removed.length;
-  // "so it was none of them" reads better than a list of pairs, but only when
-  // every pair that went really did belong to a suspect who is now cleared.
-  const cleared = new Set(clearedNow);
-  const wholeSuspects =
-    clearedNow.length > 0 && removed.every((r) => cleared.has(r.culprit));
   record(d, {
     rule,
     tier,
     premises,
-    conclusion: wholeSuspects
-      ? { kind: "cleared", suspects: clearedNow }
-      : { kind: "pairs-out", pairs: removed },
+    conclusion: {
+      kind: "answer-cut",
+      pairs: removed,
+      cleared,
+      // An hour is closed when no surviving pair uses it any more. Computed
+      // from the masks either side of the sweep rather than from `removed`,
+      // because `removed` is relative to what was still alive and says
+      // nothing about the suspects that were crossed off long ago.
+      closed: bitsOf(slotsBefore & ~slotMask(d.state)),
+    },
   });
   if (pairCount(d.state) === 0) contradict(d, rule, tier, premises);
   return true;

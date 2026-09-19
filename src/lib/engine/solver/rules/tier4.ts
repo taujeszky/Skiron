@@ -22,6 +22,15 @@
  *     pair, so without pair trials such a case would be certified unfair and
  *     thrown away by the generator, which is a silent loss of good cases.
  *
+ * **There is no "suppose they are innocent" trial**, although tier 3 makes
+ * exactly that supposition and declines the ones that do not turn on anybody's
+ * testimony. It was written, measured and taken out again: refuting `s`'s
+ * innocence says every *other* suspect is impossible, and a culprit trial
+ * already asks that of each of them one at a time — from a state with fewer
+ * pairs alive and every other suspect cleared, and so trusted. Over 600 cases
+ * spanning five shapes and three clue densities, adding it changed not one
+ * grade, not one finished case and not one step.
+ *
  * **Depth 1.** Every trial propagates with tiers 0 to 3 only, so no trial
  * ever opens a trial. Tier 3 does run inside a trial, but only usefully
  * inside a *slot* trial: a culprit or pair trial leaves one candidate, and

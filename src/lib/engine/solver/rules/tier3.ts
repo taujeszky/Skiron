@@ -13,6 +13,11 @@
  *    their accounts are true at once. If those two stories cannot both stand,
  *    one of the two did it, and everybody else is in the clear.
  *
+ * Both rules require everybody they suppose innocent to have actually said
+ * something. That is not decoration: without it the murder axioms alone can
+ * refute an innocence on a notebook holding no statements at all, and the
+ * case would be graded Hard for a matter of trust in which nobody spoke.
+ *
  * Both are bounded scratch runs on tiers 0 to 2 (`branch` then
  * `runToFixpoint(b, 2)`), so this tier never recurses into itself or into
  * tier 4. They are a named special case of tier 4's hypothesis search, pulled
@@ -91,19 +96,39 @@ export function tier3(d: Deduction): boolean {
 /**
  * Is "none of `who` is the culprit" impossible?
  *
- * Returns false — proves nothing — when the assumption empties the candidate
- * set on its own. That is not a refutation: it only says these suspects were
- * the last ones standing, which the state already knew. With two candidates
- * left and a pair to test, that is the only way the guard fires, and there
- * the conclusion it would have drawn is empty anyway; it is written down
- * because "everyone else did it" is a tempting thing for a later reader to
- * conclude from an empty set.
+ * Note what this does and does not establish, because a review caught the
+ * difference and it is worth keeping straight. Supposing `s` innocent does
+ * two things at once, since trust is derived from the candidate set: it
+ * believes `s`, and it also takes `s` out of the answer. A contradiction may
+ * come from either, so what is proved is exactly "`s` cannot have been
+ * innocent" — not "`s` lied". The sentences in `explain.ts` say the first,
+ * which is true whichever of the two did the work.
+ *
+ * What the tier *is* entitled to claim is that this is reasoning about
+ * testimony at all, and that is what `allSpeak` insists on. Without it the
+ * murder axioms alone can refute an innocence on a notebook holding no
+ * statements whatever, and the case would be graded Hard for a matter of
+ * trust in which nobody had spoken.
+ *
+ * `pairCount === 0` returns false rather than true: an assumption that empties
+ * the candidate set by itself has been refuted by nothing. It only says these
+ * suspects were the last ones standing, which the state already knew.
  */
 function refuted(d: Deduction, who: PersonId[]): boolean {
+  if (!allSpeak(d, who)) return false;
   const b = branch(d);
   for (const s of who) b.state.answer[s] = 0;
   if (pairCount(b.state) === 0) return false;
   runToFixpoint(b, TIER - 1);
   d.nodes = b.nodes;
   return b.state.contradiction;
+}
+
+/** Has every one of them put a statement in front of the player? */
+function allSpeak(d: Deduction, who: readonly PersonId[]): boolean {
+  return who.every((s) =>
+    d.ctx.clues.some(
+      (c) => c.source.kind === "testimony" && c.source.speaker === s,
+    ),
+  );
 }

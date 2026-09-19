@@ -117,7 +117,24 @@ export function solve(
 }
 
 /**
- * Run the tiers to a fixpoint and return the highest one that fired.
+ * Run the tiers to a fixpoint and return the highest one that was needed to
+ * settle the **answer**.
+ *
+ * The qualification is the whole of it. The loop keeps going after the answer
+ * is unique, because the notebook grid is worth filling in and the hint
+ * system reads those steps — but a tier that fires once one pair is left is
+ * tidying, not solving, and counting it would overstate the case. Without
+ * that distinction a case that tier 0 settles outright could be graded Normal
+ * because some later tier-2 rule trimmed a room nobody cared about, and the
+ * preset floor in `difficulty.ts`, whose whole job is to catch an Easy case
+ * wearing a Hard label, would be defeated by it.
+ *
+ * So the grade is exactly this: **the cheapest cap at which the case still
+ * finishes**. Tiers are always tried in order and the loop restarts from tier
+ * 0 after any of them fires, so if a case can be solved under a cap of `g`
+ * then the uncapped run follows the same sequence of firings and settles
+ * before tier `g + 1` is ever reached. `solver.test.ts` asserts that
+ * characterisation directly.
  *
  * Exported because tiers 3 and 4 need it: both work by assuming something,
  * propagating with the cheaper tiers, and looking for a contradiction.
@@ -127,6 +144,9 @@ export function runToFixpoint(d: Deduction, maxTier: number): number {
   let highest = -1;
   for (;;) {
     if (d.state.contradiction) return highest;
+    // Measured before the round, so that the tier which *makes* the answer
+    // unique still counts. It is the rounds after that one that do not.
+    const settled = finished(d.state);
     let fired = -1;
     for (let t = 0; t <= cap; t++) {
       if (TIERS[t](d)) {
@@ -135,6 +155,6 @@ export function runToFixpoint(d: Deduction, maxTier: number): number {
       }
     }
     if (fired < 0) return highest;
-    if (fired > highest) highest = fired;
+    if (!settled && fired > highest) highest = fired;
   }
 }

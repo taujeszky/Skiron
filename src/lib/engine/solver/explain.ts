@@ -141,14 +141,8 @@ function conclusion(c: Conclusion, g: Glossary): string {
     case "rooms-out":
       return `${g.personName(c.p)} was not in ${rooms(c.rooms, g)} at ${g.slotLabel(c.t)}`;
 
-    case "cleared":
-      return `${people(c.suspects, g)} ${c.suspects.length === 1 ? "is" : "are"} in the clear`;
-
-    case "slots-out":
-      return `the murder was not at ${slots(c.slots, g)}`;
-
-    case "pairs-out":
-      return pairs(c.pairs, g);
+    case "answer-cut":
+      return answerCut(c.pairs, c.cleared, c.closed, g);
 
     case "contradiction":
       return "the cards cannot all be true";
@@ -156,10 +150,31 @@ function conclusion(c: Conclusion, g: Glossary): string {
 }
 
 /**
- * A sweep of eliminated pairs. Grouped where it can be, because "it was not
- * Mrs Hale, at nine or at ten" is one thought and a list of pairs is not.
+ * A cut into the answer set, said the way a player would write it down.
+ *
+ * Suspects crossed off and hours closed come first, because those are the two
+ * columns of the notebook and they are what an accusation needs. Only when a
+ * sweep did neither is it worth spelling out the pairs, and then it is
+ * grouped, because "it was not Mrs Hale, at nine or at ten" is one thought
+ * and a list of pairs is not.
  */
-function pairs(list: readonly Answer[], g: Glossary): string {
+function answerCut(
+  list: readonly Answer[],
+  cleared: readonly PersonId[],
+  closed: readonly SlotIndex[],
+  g: Glossary,
+): string {
+  const said: string[] = [];
+  if (cleared.length > 0) {
+    said.push(
+      `${people(cleared, g)} ${cleared.length === 1 ? "is" : "are"} in the clear`,
+    );
+  }
+  if (closed.length > 0) {
+    said.push(`the murder was not at ${slots(closed, g)}`);
+  }
+  if (said.length > 0) return said.join(", and ");
+
   if (list.length === 0) return "nothing more is ruled out";
   const culprits = [...new Set(list.map((a) => a.culprit))];
   const when = [...new Set(list.map((a) => a.slot))];
@@ -189,20 +204,26 @@ function reason(
 
   switch (step.rule) {
     /* tier 0 — placement */
+    // "a room", not "that room", throughout. An elimination that leaves one
+    // candidate standing is recorded as `room-set`, naming the room the
+    // person IS in — so a reason that said "that room" would point at the
+    // wrong one and tell the player that a card ruling a room out puts
+    // somebody in it. Since hint branch 2 is the hint system's entire
+    // output, that is a false rule taught in the one place a player trusts.
     case "clue-at":
-      return `${cards} places them there`;
+      return `${cards} places them`;
     case "clue-not-at":
-      return `${cards} rules that room out`;
+      return `${cards} says where they were not`;
     case "clue-stayed":
       return `${cards} has them staying put across those hours`;
     case "clue-saw":
-      return `${cards} puts them both in that room`;
+      return `${cards} puts the two of them in one room`;
     case "clue-alone":
-      return `${cards} gives that room to one person`;
+      return `${cards} gives a room to one person, and nobody else`;
     case "clue-empty":
-      return `${cards} leaves that room empty`;
+      return `${cards} says a room held nobody`;
     case "clue-never-visited":
-      return `${cards} keeps them out of that room altogether`;
+      return `${cards} keeps them out of a room altogether`;
     case "clue-alive-at":
       return `${cards} has the victim still alive then`;
     case "clue-death-window":
@@ -230,21 +251,28 @@ function reason(
 
     /* tier 2 — counting */
     case "occupied-last-one":
-      return `${cards} puts somebody in that room, and everyone else is accounted for elsewhere`;
+      return `${cards} puts somebody in a room, and everyone else is accounted for elsewhere`;
     case "count-exact":
-      return `${cards} fixes how many were in that room, and the count only works one way`;
+      return `${cards} fixes how many were in a room, and the count only works one way`;
     case "count-capacity":
-      return "the room was already holding as many as it can";
+      return "a room was already holding as many as it can";
     case "visited-last-slot":
-      return `${cards} has them in that room at some point, and only one hour is left for it`;
+      return `${cards} has them in a room at some point, and only one hour is left for it`;
     case "together-same-room":
       return `${cards} has them together, and two people together are in one room`;
 
     /* tier 3 — trust */
+    // What these rules prove is that the supposition fails, and the
+    // supposition is innocence. Saying "cannot be telling the truth" would
+    // be claiming more: with trust derived from the candidate set, removing
+    // somebody from the answer and believing them are the same edit, and
+    // either of them can be what breaks. Tier 3 only takes the cases where
+    // the suspects have spoken at all — see tier3.ts — so this is a
+    // deduction about testimony; it is just not always about a lie.
     case "self-incrimination":
-      return `${supposed(step.premises, g)} cannot be telling the truth, and only the killer lies`;
+      return `there is no way for ${supposed(step.premises, g)} to have been innocent`;
     case "conflict-pair":
-      return `${supposed(step.premises, g)} cannot both be telling the truth, and only the killer lies`;
+      return `${supposed(step.premises, g)} cannot both have been innocent`;
 
     /* tier 4 — hypothesis */
     case "trial-culprit":

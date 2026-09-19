@@ -134,34 +134,47 @@ describe("clue sentences", () => {
 
 describe("step sentences", () => {
   /** Every shape of conclusion, so each rule is rendered against all of them. */
+  const cut = (
+    pairs: { culprit: number; slot: number }[],
+    cleared: number[] = [],
+    closed: number[] = [],
+  ): Conclusion => ({ kind: "answer-cut", pairs, cleared, closed });
+
   const CONCLUSIONS: Conclusion[] = [
     { kind: "room-set", p: 0, t: 1, r: 2 },
     { kind: "rooms-out", p: 1, t: 2, rooms: 0b1011 },
-    { kind: "pairs-out", pairs: [{ culprit: 0, slot: 1 }] },
-    {
-      kind: "pairs-out",
-      pairs: [
-        { culprit: 0, slot: 1 },
-        { culprit: 0, slot: 2 },
+    // A cut that clears nobody and closes no hour: only the pairs can be said.
+    cut([{ culprit: 0, slot: 1 }]),
+    cut([
+      { culprit: 0, slot: 1 },
+      { culprit: 0, slot: 2 },
+    ]),
+    cut([
+      { culprit: 0, slot: 1 },
+      { culprit: 1, slot: 1 },
+    ]),
+    cut([
+      { culprit: 0, slot: 1 },
+      { culprit: 1, slot: 2 },
+    ]),
+    // Cuts that a notebook can actually record.
+    cut([{ culprit: 1, slot: 0 }], [1]),
+    cut(
+      [
+        { culprit: 0, slot: 0 },
+        { culprit: 2, slot: 0 },
       ],
-    },
-    {
-      kind: "pairs-out",
-      pairs: [
+      [0, 2],
+    ),
+    cut(
+      [
         { culprit: 0, slot: 1 },
         { culprit: 1, slot: 1 },
       ],
-    },
-    {
-      kind: "pairs-out",
-      pairs: [
-        { culprit: 0, slot: 1 },
-        { culprit: 1, slot: 2 },
-      ],
-    },
-    { kind: "cleared", suspects: [1] },
-    { kind: "cleared", suspects: [0, 2] },
-    { kind: "slots-out", slots: [1, 3] },
+      [],
+      [1],
+    ),
+    cut([{ culprit: 2, slot: 3 }], [2], [3]),
     { kind: "contradiction" },
   ];
 
@@ -196,6 +209,29 @@ describe("step sentences", () => {
     }
   });
 
+  it("never points at a room the conclusion did not name", () => {
+    // An elimination that leaves one candidate standing is recorded as
+    // `room-set`, naming the room the person IS in. A reason clause saying
+    // "that room" would then point at the wrong one and teach the player
+    // that a card ruling a room out puts somebody in it.
+    const step: Step = {
+      rule: "clue-not-at",
+      tier: 0,
+      premises: { clues: ["c0"], cells: [] },
+      conclusion: { kind: "room-set", p: 0, t: 1, r: 2 },
+    };
+    const text = stepSentence(frame, step, cards, skin);
+    expect(text).toBe(
+      "Mrs Hale must have been in the study at nine, because Card 1 says where they were not.",
+    );
+    expect(text).not.toContain("that room");
+    // And the same rule with the elimination shape still reads correctly.
+    const out: Step = { ...step, conclusion: { kind: "rooms-out", p: 0, t: 1, rooms: 1 } };
+    expect(stepSentence(frame, out, cards, skin)).toBe(
+      "Mrs Hale was not in the hall at nine, because Card 1 says where they were not.",
+    );
+  });
+
   it("names the cards a step rests on, the way the notebook numbers them", () => {
     const step: Step = {
       rule: "occupied-last-one",
@@ -205,7 +241,7 @@ describe("step sentences", () => {
     };
     expect(stepSentence(frame, step, cards, skin)).toBe(
       "Mrs Hale must have been in the study at nine, because Card 2 puts " +
-        "somebody in that room, and everyone else is accounted for elsewhere.",
+        "somebody in a room, and everyone else is accounted for elsewhere.",
     );
   });
 
@@ -217,7 +253,7 @@ describe("step sentences", () => {
       conclusion: { kind: "room-set", p: 0, t: 1, r: 2 },
     };
     expect(stepSentence(frame, step, cards, skin)).toBe(
-      "Mrs Hale must have been in the study at nine, because a card places them there.",
+      "Mrs Hale must have been in the study at nine, because a card places them.",
     );
     assertReadable(stepSentence(frame, step, cards), "unknown card");
     const axiom: Step = {

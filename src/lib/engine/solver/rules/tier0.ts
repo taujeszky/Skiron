@@ -97,6 +97,13 @@ function noLivingSoulIn(
   }
   const V = frame.victim;
   if (except === V) return;
+  // Away from the body's room there is nothing to weigh: alive, this card
+  // says they were not here; dead, rule 5 has them lying in `r*`, which this
+  // is not. See `ruleOutLiving` in tier2.ts, which is the same argument.
+  if (r !== frame.murderRoom) {
+    removeRooms(d, V, t, bit(r), rule, TIER, premises);
+    return;
+  }
   const live = slotMask(d.state);
   if (live !== 0 && (live & ~after(t)) === 0) {
     // every surviving murder slot is later than t, so the victim was alive

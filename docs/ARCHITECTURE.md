@@ -182,9 +182,19 @@ Two guards exist because of that, and both were verified by deliberately breakin
 ## 7. The deduction solver
 
 Five tiers, tried in order, restarting from tier 0 whenever any of them fires. A tier
-therefore only ever runs when every cheaper tier is saturated, and **the highest tier
-that fired is the grade**: the hardest kind of reasoning the case actually demanded.
-`TIERS` in `solve.ts` is an array and its index *is* the tier number.
+therefore only ever runs when every cheaper tier is saturated. `TIERS` in `solve.ts` is an
+array and its index *is* the tier number.
+
+**The grade is the cheapest cap at which the case still finishes.** Not simply the highest
+tier that fired: the solver keeps going after the answer is unique, because the grid is
+worth filling in and the hint system reads those steps, but a tier that fires once one pair
+is left is tidying rather than solving. Counting those would let a case that tier 0 settles
+outright be graded Normal because a tier-2 rule later trimmed a room nobody cared about —
+and the preset floor in `difficulty.ts`, whose whole job is to catch an Easy case wearing a
+Hard label, would be defeated by exactly that. Since tiers are always tried in order and
+the loop restarts from tier 0, a case solvable under a cap of `g` settles before tier `g+1`
+is ever reached, which is what makes the two statements the same one. `solver.test.ts`
+asserts the characterisation directly.
 
 | Tier | Name | What it does |
 | --- | --- | --- |
@@ -229,6 +239,30 @@ something but was not run leaves the case unfinished, and the generator throws s
 away — so raising the budget changes which cases exist. `SolveResult.budgetSpent` says when
 a run stopped for want of budget, so "not finished" is never mistaken for "proved there is
 nothing more to find".
+
+**A step records what it left standing, not only what it took.** `killPairs` sweeps
+whatever is still alive, so the same elimination arrives as a different set of pairs
+depending on what has already been crossed off — and from the pairs alone a reader cannot
+tell whether a suspect has just been cleared. The `answer-cut` conclusion therefore carries
+three things: the pairs that went, the suspects that leaves in the clear, and the hours it
+closes for everybody at once. A player's notebook holds exactly the last two, so a step
+that did not say them was a step the notebook could not record. It did not say them for a
+while, and §8 describes what that cost.
+
+**Tier 3 requires everybody it supposes innocent to have spoken.** Supposing `s` innocent
+does two things at once, since trust is derived from the candidate set: it believes `s`,
+and it takes `s` out of the answer. Either can be what breaks, so what the rule proves is
+"`s` cannot have been innocent" and not "`s` lied" — and the sentences say the first.
+Without the check on speaking, the murder axioms alone could refute an innocence on a
+notebook holding no statements at all, and the case would be graded Hard for a matter of
+trust in which nobody had said a word.
+
+**The victim leaves a room outright when it is not the room they were found in.** "Nobody
+living was in `r` at `t`" normally splits — the victim was elsewhere, or the victim was
+already dead — and a rule may only act when the state rules one side out. But away from
+`r*` it does not split at all: alive, the card says they were not there; dead, rule 5 has
+them lying in `r*`, which this is not. `ruleOutLiving` in tier2.ts and `noLivingSoulIn` in
+tier0.ts both take that shortcut, and it is free.
 
 ### Where the tier boundaries actually are
 
@@ -287,9 +321,18 @@ been cornered.
   side, a branch forgetting its depth, the depth gate removed, and tier 4 unwired. The
   three survivors were each shown to be behaviour-preserving rather than test gaps.
 
+- **An adversarial review** after the wave was complete: seven independent readings —
+  soundness, the victim's liveness, grading, hint safety, the sentences, determinism and
+  conformance to the plan — with every finding sent to two verifiers told to refute it.
+  Fifteen survived. They are what §8's opening paragraph is about, and the ones that
+  changed the design are recorded above and below; three more turned out to be equivalent
+  mutants and are documented where they live.
+
 Measured on this machine over 800 cases across the four preset shapes: a whole solve
 takes 0.5 ms on Easy and 1.5 ms on Expert, worst case 11 ms. The heaviest case spent
-10,574 of the 20,000 trial budget, and no case exhausted it.
+10,574 of the 20,000 trial budget, and no case exhausted it. Re-measured after the review
+over 3,600 cases: no unsound elimination, no grade that a cheaper cap could have reached,
+and no tier-3 deduction naming a suspect who had not spoken.
 
 ## 8. Sentences, the notebook and hints
 
@@ -321,6 +364,13 @@ everyone else is accounted for elsewhere." Reason-first reads better in
 isolation but needs a pronoun before the name it refers to, and across
 twenty-eight rules that produces sentences nobody can parse.
 
+A reason clause never says "**that** room". An elimination that leaves one
+candidate standing is recorded as `room-set`, naming the room the person *is*
+in, so "Card 2 rules that room out" would point at the wrong one and teach the
+player that a card ruling a room out puts somebody in it. Since hint branch 2
+is the hint system's entire output, that is a false rule taught in the one
+place a player has to trust.
+
 **Everything the player sees is numbered from one**, rooms and slots included,
 while the engine counts from zero throughout. A notebook showing "slot 0" next
 to an hour labelled "one" would make a player doubt the grid, and doubting the
@@ -331,9 +381,22 @@ grid is fatal in a game whose whole promise is that the grid is fair.
 `Notebook` (in `hint.ts`) is **deliberately coarser than `SolverState`**: a
 grid of crossed-out rooms, plus two flat lists for suspects and hours. A player
 does not keep a candidate *pair* per suspect, and a hint system that assumed
-they did would offer deductions nobody could write down. So a `pairs-out`
-conclusion is only ever news to a player when it takes out a whole suspect or a
-whole hour.
+they did would offer deductions nobody could write down. So an `answer-cut`
+conclusion is news to a player exactly when it clears a suspect or closes an
+hour, and the step says which.
+
+It did not always say which, and the bug that followed is the one worth
+remembering from this wave. The step used to carry only the pairs it removed,
+and the hint system tried to recover the rest by looking at their *shape* — one
+suspect across every hour, or one hour across every suspect. But `killPairs`
+sweeps what is still alive, so after the first elimination no sweep ever has
+that shape again. Almost every real elimination was therefore judged "not
+news", was never offered as a hint and was never written down, and the player
+was then told that everything the cards could prove was already in the notebook
+— with the hour column blank, and the accusation needing an hour. Nothing was
+unsound and no test went red: the hint tests asked whether hints were true and
+whether they terminated, and both were. They did not ask whether following them
+left the player able to accuse. That is now the assertion they lead with.
 
 `notebookIsSound` is the Check, and it is one bit: is everything crossed out
 actually false? It compares with the stored truth and **never asks a solver**
@@ -355,7 +418,11 @@ Three branches, in this order, on the cards the player has actually collected:
    missed.
 3. **A topic to investigate** — who to ask and about what, for the next card
    the proof needs. A topic and a person, never a card id and never its
-   content (invariant 8).
+   content (invariant 8). It has to be an action the game actually has:
+   physical evidence is pointed at by its *room*, because there is no
+   examine-a-person action and "look into Suspect A", with nobody to ask, is
+   advice that cannot be followed. The two clues about the victim name no room,
+   so they point at the room the body was found in.
 
 Then "you have everything you need". A test plays cases through by taking the
 advice repeatedly, and asserts that the notebook stays sound at every step, that

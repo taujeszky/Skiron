@@ -7,6 +7,8 @@ import { simulateTruth } from "../world/simulate";
 import { corridorPlan, frameOf, worldOf } from "../testkit";
 import { noRules } from "../types";
 import { apply, hint, marksMade, newNotebook, notebookIsSound } from "./hint";
+import type { Notebook } from "./hint";
+import type { Step } from "./state";
 import { solve } from "./solve";
 import type { CaseFrame, Clue, ClueBody, Glossary, World } from "../types";
 
@@ -154,6 +156,51 @@ describe("hint order", () => {
     expect(leaks, `hint leaked the card: ${h.text}`).toBe(false);
   });
 
+  it("names an action the player can actually take", () => {
+    // The game's actions are: examine a room, or ask a suspect about an
+    // hour, a person or a room. There is no examine-a-person action, so a
+    // physical fact must be pointed at by its room — "look into Suspect A",
+    // with nobody to ask, is advice that cannot be followed.
+    const nb = newNotebook(frame);
+    for (const step of solve(frame, cards).steps) apply(frame, nb, step.conclusion);
+
+    const physical: Clue = {
+      id: "phys",
+      body: { kind: "At", p: 2, t: 1, r: 1 },
+      source: { kind: "fact" },
+    };
+    const h = hint({ frame, cards, notebook: nb, world, essential: [physical], glossary: skin });
+    expect(h.kind).toBe("investigate");
+    if (h.kind !== "investigate") return;
+    expect(h.ask).toBeNull();
+    expect(h.topic).toBe("room:1");
+    expect(h.text).toContain(skin.roomName(1));
+
+    // The two clues about the victim name no room at all, and the place to
+    // learn when somebody died is the room they died in.
+    const timing: Clue = {
+      id: "when",
+      body: { kind: "AliveAt", t: 1 },
+      source: { kind: "fact" },
+    };
+    const t = hint({ frame, cards, notebook: nb, world, essential: [timing], glossary: skin });
+    expect(t.kind).toBe("investigate");
+    if (t.kind !== "investigate") return;
+    expect(t.ask).toBeNull();
+    expect(t.topic).toBe(`room:${frame.murderRoom}`);
+
+    // Testimony is different: every topic on it is something to ask about.
+    const said: Clue = {
+      id: "said",
+      body: { kind: "At", p: 2, t: 1, r: 1 },
+      source: { kind: "testimony", speaker: 0 },
+    };
+    const s = hint({ frame, cards, notebook: nb, world, essential: [said], glossary: skin });
+    expect(s.kind).toBe("investigate");
+    if (s.kind !== "investigate") return;
+    expect(s.ask).toBe(0);
+  });
+
   it("says to accuse when there is nothing left at all", () => {
     const nb = newNotebook(frame);
     for (const step of solve(frame, cards).steps) apply(frame, nb, step.conclusion);
@@ -173,7 +220,76 @@ describe("hint order", () => {
   });
 });
 
+/** A copy, so a test can ask what a mark would do without making it. */
+function copyOf(nb: Notebook): Notebook {
+  return {
+    ruledOut: nb.ruledOut.map((row) => [...row]),
+    clearedSuspects: nb.clearedSuspects,
+    ruledOutSlots: nb.ruledOutSlots,
+  };
+}
+
+/** Would writing this conclusion down actually add a mark? Worked out with
+ * `apply` and `marksMade` rather than with the hint system's own `isNews`, so
+ * that the two have to agree rather than being the same code twice. */
+function wouldMark(f: CaseFrame, nb: Notebook, c: Step["conclusion"]): boolean {
+  const copy = copyOf(nb);
+  const before = marksMade(f, copy);
+  apply(f, copy, c);
+  return marksMade(f, copy) > before;
+}
+
 describe("following hints", () => {
+  it("always offers the cheapest deduction available, not the first one", () => {
+    // The step list is the order the rules happened to fire, so the first
+    // step the notebook is missing is frequently not the easiest one. A
+    // player asking for a hint wants the easiest thing they overlooked.
+    let diverged = 0;
+    let checked = 0;
+    for (let seed = 0; seed < 25; seed++) {
+      const rng = new RNG(`cheap:${seed}`);
+      const plan = buildFloorPlan(rng, { rooms: 5 });
+      const res = simulateTruth(
+        rng,
+        { plan, rules: noRules(), suspects: 4, slots: 5, lying: false },
+        { minMeetings: 0, minVictimCompany: 0 },
+      );
+      if (!res) continue;
+      const { frame: f, world: w } = res;
+      const cards: Clue[] = [];
+      let id = 0;
+      for (let p = 0; p < f.people; p++) {
+        for (let t = 0; t < f.slots; t++) {
+          if (!rng.chance(0.3)) continue;
+          cards.push({
+            id: `c${id++}`,
+            body: { kind: "At", p, t, r: w.loc[p][t] },
+            source: { kind: "fact" },
+          });
+        }
+      }
+      const steps = solve(f, cards).steps;
+      const nb = newNotebook(f);
+      for (let n = 0; n < 200; n++) {
+        const h = hint({ frame: f, cards, notebook: nb, world: w });
+        if (h.kind !== "deduction") break;
+        const news = steps.filter((st) => wouldMark(f, nb, st.conclusion));
+        expect(news.length).toBeGreaterThan(0);
+        const cheapest = Math.min(...news.map((st) => st.tier));
+        expect(h.step.tier, `seed ${seed}: not the cheapest deduction`).toBe(
+          cheapest,
+        );
+        if (news[0].tier !== cheapest) diverged++;
+        checked++;
+        apply(f, nb, h.step.conclusion);
+      }
+    }
+    expect(checked).toBeGreaterThan(50);
+    // Guard the guard: if the first step were always the cheapest one, the
+    // assertion above would hold for a first-found implementation too.
+    expect(diverged, "cheapest and first-found never differed").toBeGreaterThan(0);
+  });
+
   it("never puts a false mark in the notebook, and always terminates", () => {
     let played = 0;
     for (let seed = 0; seed < 8; seed++) {
@@ -220,5 +336,66 @@ describe("following hints", () => {
       played++;
     }
     expect(played).toBeGreaterThan(5);
+  });
+
+  it("leaves the answer in the notebook when the cards prove one", () => {
+    // The assertion that matters, and the one whose absence hid a real bug
+    // for a while: it is not enough that hints are true and that they stop.
+    // When the collected cards prove a unique answer, a player who takes
+    // every hint must end up able to accuse — one suspect left uncrossed and
+    // one hour left open, and both of them the right ones. Before the step
+    // record carried what a sweep *left standing*, rather than only the pairs
+    // it removed, this ended with the whole hour column still blank and the
+    // hint system cheerfully saying there was nothing left to prove.
+    let proved = 0;
+    for (let seed = 0; seed < 120; seed++) {
+      const rng = new RNG(`accuse:${seed}`);
+      const plan = buildFloorPlan(rng, { rooms: 5 });
+      const res = simulateTruth(
+        rng,
+        { plan, rules: noRules(), suspects: 4, slots: 5, lying: false },
+        { minMeetings: 0, minVictimCompany: 0 },
+      );
+      if (!res) continue;
+      const { frame: f, world: w } = res;
+      // Every true `At` and `Empty`: enough to settle the case outright.
+      const cards: Clue[] = [];
+      for (let p = 0; p < f.people; p++) {
+        for (let t = 0; t < f.slots; t++) {
+          cards.push({
+            id: `a${p}_${t}`,
+            body: { kind: "At", p, t, r: w.loc[p][t] },
+            source: { kind: "fact" },
+          });
+        }
+      }
+      if (!solve(f, cards).finished) continue;
+
+      const nb = newNotebook(f);
+      for (let step = 0; step < 500; step++) {
+        const h = hint({ frame: f, cards, notebook: nb, world: w });
+        if (h.kind !== "deduction") break;
+        apply(f, nb, h.step.conclusion);
+      }
+      expect(hint({ frame: f, cards, notebook: nb, world: w }).kind).toBe("accuse");
+      expect(notebookIsSound(f, nb, w)).toBe(true);
+
+      const suspectsLeft = [];
+      for (let p = 0; p < f.suspects; p++) {
+        if ((nb.clearedSuspects & bit(p)) === 0) suspectsLeft.push(p);
+      }
+      const hoursLeft = [];
+      for (let t = 0; t < f.slots; t++) {
+        if ((nb.ruledOutSlots & bit(t)) === 0) hoursLeft.push(t);
+      }
+      expect(suspectsLeft, `seed ${seed}: suspects left open`).toEqual([w.culprit]);
+      expect(hoursLeft, `seed ${seed}: hours left open`).toEqual([w.murderSlot]);
+      proved++;
+    }
+    // Full location facts do not always settle a case - a suspect who stays
+    // in the murder room across two hours leaves two pairs alive - so only a
+    // third or so of the corpus reaches this property. That is still plenty,
+    // and the floor stops the test going quietly vacuous.
+    expect(proved).toBeGreaterThan(25);
   });
 });

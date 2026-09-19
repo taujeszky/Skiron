@@ -216,3 +216,55 @@ sequence terminates.
 pins the one coupling that is easy to break: a preset asking for tier 3 must have lying
 on, because the trust tier sits out truthful cases and such a preset could never be
 satisfied.
+
+## What the adversarial review changed (2026-09-19)
+
+Seven independent readings of the finished wave, each finding verified by two others told
+to refute it. Fifteen findings survived. Six of them were the same bug seen from six
+angles, and it is the one to remember.
+
+**The step record could not say what it had left standing.** `killPairs` recorded only the
+pairs it removed, and `hint.ts` tried to recover "this suspect is now cleared" from their
+*shape*. Since a sweep only ever touches what is still alive, no sweep has the expected
+shape once anything has been crossed off — so almost every real elimination was dropped,
+and the player was then told the notebook was complete with the hour column blank. Fixed by
+making the conclusion carry `cleared` and `closed` alongside the pairs. Nothing was unsound
+and nothing went red, because the hint tests asked whether hints were true and whether they
+stopped, and never whether following them left the player able to accuse.
+
+The other five:
+
+- **The grade counted tiers that fired after the answer was already unique**, so a case
+  tier 0 settled outright could be graded Normal because tier 2 later trimmed a room. The
+  grade is now the cheapest cap at which the case still finishes, and the test says exactly
+  that instead of comparing grids.
+- **A reason clause said "that room" where the conclusion named a different one** — "must
+  have been in Room 3, because Card 2 rules that room out" — teaching the player a rule
+  that is false. Reasons now say "a room".
+- **Tier 3 could accuse a suspect of lying who had said nothing**, and grade the case Hard
+  for a matter of trust in which nobody had spoken. It now requires everybody it supposes
+  innocent to have spoken, and the sentence says what the rule actually proves: "there is
+  no way for X to have been innocent", not "X cannot be telling the truth". Removing a
+  suspect from the answer and believing them are the same edit, so either can be what
+  breaks.
+- **An investigate hint named a person for a physical fact**, which is not one of the
+  game's actions. Physical evidence is now pointed at by its room.
+- **Eighteen of the twenty-eight rules had no minimal position**, which the plan's Tests
+  section asks for. They have one now, both ways, plus a census asserting that every rule
+  fires somewhere — the failure a soundness oracle structurally cannot see is a rule that
+  has quietly stopped firing.
+
+Three further changes came out of chasing those:
+
+- **`Conclusion` lost `pairs-out`, `cleared` and `slots-out` and gained `answer-cut`.**
+  `slots-out` had never been emitted by anything; keeping a rendering for a shape no rule
+  produces was what made the coverage test look complete.
+- **A `trial-innocent` rule was written for tier 4 and then taken out again.** It was meant
+  to catch what the tightened tier 3 now declines. Measured over 600 cases it changed not
+  one grade, not one finished case and not one step, because refuting a suspect's innocence
+  says every *other* suspect is impossible and the culprit trials already ask that of each
+  of them, from a tighter state. Recorded here because the next person to notice the gap
+  should not have to measure it twice.
+- **The victim now leaves a room outright when it is not the room they were found in.** The
+  "elsewhere, or already dead" split does not apply away from `r*`, and the elimination was
+  simply never being made.

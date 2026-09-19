@@ -221,28 +221,17 @@ function isNews(
     case "rooms-out":
       return (c.rooms & ~notebook.ruledOut[c.p][c.t]) !== 0;
 
-    case "cleared":
-      return c.suspects.some((s) => (notebook.clearedSuspects & bit(s)) === 0);
-
-    case "slots-out":
-      return c.slots.some((t) => (notebook.ruledOutSlots & bit(t)) === 0);
-
-    case "pairs-out": {
+    case "answer-cut":
       // A notebook keeps two flat lists, so a scatter of pairs is not
-      // something a player can write down. Only a sweep that takes out a
-      // whole suspect, or a whole hour, is news to them.
-      const culprits = new Set(c.pairs.map((a) => a.culprit));
-      const whens = new Set(c.pairs.map((a) => a.slot));
-      if (culprits.size === 1 && whens.size === frame.slots) {
-        const [s] = culprits;
-        return (notebook.clearedSuspects & bit(s)) === 0;
-      }
-      if (whens.size === 1 && culprits.size === frame.suspects) {
-        const [t] = whens;
-        return (notebook.ruledOutSlots & bit(t)) === 0;
-      }
-      return false;
-    }
+      // something a player can write down — but a suspect cleared or an hour
+      // closed is, and the step now says which. Reading the pairs and
+      // guessing was the bug: the pairs a sweep removes depend on what had
+      // already been crossed off, so most real eliminations looked like
+      // scatter and were dropped.
+      return (
+        c.cleared.some((s) => (notebook.clearedSuspects & bit(s)) === 0) ||
+        c.closed.some((t) => (notebook.ruledOutSlots & bit(t)) === 0)
+      );
 
     case "contradiction":
       // The collected cards cannot all be true. That is a bug in the case,
@@ -254,14 +243,25 @@ function isNews(
 
 /* ----------------------------------------------------------- the pointing */
 
-/** The topic to name. The first the clue offers, which is a person, then a
- * room, then an hour — the order a player would try them in. */
+/**
+ * The topic to name, chosen so that it is an action the player can take.
+ *
+ * The plan's action set is: examine a room, or ask a suspect about an hour, a
+ * person or a room. So a physical fact must name a **room** — there is no
+ * examine-a-person action, and "look into Suspect A" with nobody to ask is
+ * advice a player cannot follow. Testimony can take the clue's own first
+ * topic, because every one of them is something to ask its speaker about.
+ */
 function firstTopic(frame: CaseFrame, clue: Clue): TopicKey {
   const keys = clueTopicKeys(frame, clue);
-  if (keys.length > 0) return keys[0];
-  // Nothing to ask about at all: the motive is the one question that always
-  // exists, and a bank always has an answer for it.
-  return topic.motive;
+  if (clue.source.kind === "testimony") {
+    return keys.length > 0 ? keys[0] : topic.motive;
+  }
+  const room = keys.find((k) => k.startsWith("room:"));
+  if (room !== undefined) return room;
+  // A fact that names no room at all is one of the two about the victim, and
+  // the place to learn when somebody died is the room they died in.
+  return topic.room(frame.murderRoom);
 }
 
 function investigateText(
@@ -314,22 +314,10 @@ export function apply(
     case "rooms-out":
       notebook.ruledOut[c.p][c.t] |= c.rooms;
       return;
-    case "cleared":
-      for (const s of c.suspects) notebook.clearedSuspects |= bit(s);
+    case "answer-cut":
+      for (const s of c.cleared) notebook.clearedSuspects |= bit(s);
+      for (const t of c.closed) notebook.ruledOutSlots |= bit(t);
       return;
-    case "slots-out":
-      for (const t of c.slots) notebook.ruledOutSlots |= bit(t);
-      return;
-    case "pairs-out": {
-      const culprits = new Set(c.pairs.map((a) => a.culprit));
-      const whens = new Set(c.pairs.map((a) => a.slot));
-      if (culprits.size === 1 && whens.size === frame.slots) {
-        for (const s of culprits) notebook.clearedSuspects |= bit(s);
-      } else if (whens.size === 1 && culprits.size === frame.suspects) {
-        for (const t of whens) notebook.ruledOutSlots |= bit(t);
-      }
-      return;
-    }
     case "contradiction":
       return;
   }
