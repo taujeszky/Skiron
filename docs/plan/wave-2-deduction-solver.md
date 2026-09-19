@@ -126,35 +126,59 @@ Two further decisions, both in ARCHITECTURE.md §7:
   deduced something, so a solver that stopped working could not pass vacuously.
   **A new rule joins this guard.**
 
+## Tiers 2, 3 and 4 as built (2026-09-19)
+
+All five tiers are in and wired; `TIERS` in `solve.ts` is the whole wiring. 304 tests
+green, `npm run check` at 0/0. ARCHITECTURE.md §7 is now the full account — the tier
+table, the four decisions, the tier boundaries and how the whole thing is guarded — so
+what follows is only what a reader of *this file* needs, which is where the code differs
+from the tasks above.
+
+- **Tier 3 sits out cases without lying**, which task 2 implied ("trust") but did not
+  say. With lying off everybody is trusted from the start, so supposing somebody innocent
+  adds no card; it only narrows the answer, and that is tier 4's job and tier 4's grade.
+  A truthful case graded Hard for a trust deduction it could not have made would be a
+  lie told to the player.
+- **Depth 1 is a field, not a consequence.** Task 2 says tier 4 is depth 1, and capping a
+  trial at tier 3 achieves that. But it achieves it as a side effect of a number, so
+  `Deduction.depth` now counts suppositions and tier 4 refuses to run above zero. Depth is
+  difficulty: a case needing two suppositions at once is not one a person can solve, and
+  if the cap were ever widened such cases would start being certified fair.
+- **`TRIAL_BUDGET` lives in `state.ts`**, not in `solve.ts` as originally written, so that
+  `SolverContext` can carry it without the two files importing each other. `solve.ts`
+  re-exports it; callers should keep reading it from there. `SolveResult` gained
+  `trialNodes` and `budgetSpent`, so that an unfinished run can say whether it ran out of
+  budget or ran out of argument — the generator must reject the case either way, but only
+  one of the two is a reason to look at the budget.
+- **Tier 4 sweeps a flavour at a time.** It runs every culprit trial, applies whatever
+  they refuted, and returns; only if none refuted anything does it move to slots, then to
+  pairs. Cheapest flavour first, one step recorded per elimination, and the trials within
+  a sweep all read the same starting state, so they stay independent.
+
+### What the tests now say
+
+- `solver.test.ts` grew a density spread and a fifth size, and two new guards: **every
+  tier must be some case's grade** (a tier that stops firing can no longer be certified
+  by a suite that never ran it), and the budget properties — starving tier 4 must weaken
+  the result and never strengthen it, and an ordinary case must stay well inside the cap.
+- `rules/rules.test.ts` is new: each tier 2 and tier 3 rule gets a minimal board where it
+  must fire and the same board with the one card removed that made it fire, every one
+  cross-checked against the exhaustive solver. Tier 4 is covered by the corpus properties
+  instead, because every small hand-built position for it turned out to be solvable at
+  tier 3 — which is itself worth knowing: `conflict-pair` is stronger than it looks.
+- Run by hand and recorded in ARCHITECTURE.md §7 rather than committed: 14,400 cases of
+  differential fuzzing against the exhaustive solver, and nine planted mutations.
+
 ## Still to do
 
-1. **`rules/tier2.ts` — counting.** `Occupied` with one candidate left; `Count` and
-   `Capacity` (`|must| = k` excludes everyone else, `|can| = k` forces all of `can` in);
-   `Visited` with one slot left; `Together` room equality (`dom[p][t] &= dom[q][t]` and
-   back). Every one of these must go through `mayBeLivingIn`/`mustBeLivingIn` for the
-   victim — a counting rule that reads the victim's raw domain is the classic way to make
-   this tier unsound.
-2. **`rules/tier3.ts` — trust (lying only).** Both are bounded scratch runs using tiers
-   0–2 only (`branch(d)` then `runToFixpoint(b, 2)`).
-   - *Self-incrimination*: assume suspect `s`'s testimony alongside the facts; a
-     contradiction means `s` **is** the culprit, because an innocent `s` would have been
-     telling the truth. Collapse `answer` to `s`'s row.
-   - *Conflict pair*: assume `s1`'s and `s2`'s testimony together; a contradiction means
-     one of them did it, so clear everyone else.
-3. **`rules/tier4.ts` — hypothesis.** Depth 1, capped by `TRIAL_BUDGET`. Assume, propagate
-   with tiers 0–3, eliminate on contradiction. Three flavours, cheapest first: a culprit
-   (which trusts every other suspect at once — the big win), a slot, then a **pair**.
-   Pair trials are not optional: culprit-only and slot-only trials can leave two pairs
-   alive in one row, and "finished" means one pair.
-4. **`difficulty.ts`** — tier ↔ name (Easy ≤ 1, Normal ≤ 2, Hard = 3, Expert = 4; Hard and
+1. **`difficulty.ts`** — tier ↔ name (Easy ≤ 1, Normal ≤ 2, Hard = 3, Expert = 4; Hard and
    Expert have lying on) and the preset size table. The *actual* tier is authoritative and
    is what the UI shows, as in Signpost.
-5. **`explain.ts`** — `clueSentence` and `stepSentence`, over the `Conclusion` union in
+2. **`explain.ts`** — `clueSentence` and `stepSentence`, over the `Conclusion` union in
    `state.ts` (`room-set`, `rooms-out`, `pairs-out`, `cleared`, `slots-out`,
    `contradiction`). Conclusions are data, not prose, precisely so the same step renders as
    "Suspect B" with no skin and "Mrs Hale" with one — and in Hungarian in wave 9.
-6. **`hint.ts`** — the three branches in the order the plan gives.
-
-Note for whoever writes tier 2: `tier0.ts` deliberately leaves `Occupied`, `Count` and
-`Visited` alone, and takes only the liveness half of `Together`. That is not an oversight,
-it is the tier boundary.
+   `Premises` now also carries `assumedInnocent` and `assumedAnswer`, which is how a trial
+   step says what it supposed: one pair reads "suppose it was her, at nine", a whole row
+   "suppose it was her", a whole column "suppose it happened at nine".
+3. **`hint.ts`** — the three branches in the order the plan gives.

@@ -21,8 +21,12 @@
 import type { Answer, CaseFrame, Clue } from "../types";
 import { tier0 } from "./rules/tier0";
 import { tier1 } from "./rules/tier1";
+import { tier2 } from "./rules/tier2";
+import { tier3 } from "./rules/tier3";
+import { tier4 } from "./rules/tier4";
 import type { Deduction, SolverState, Step } from "./state";
 import {
+  TRIAL_BUDGET,
   finished,
   initialState,
   makeContext,
@@ -32,12 +36,25 @@ import {
 } from "./state";
 
 /**
- * One pass of a tier. Returns whether it changed anything. Tiers 2 to 4 are
- * appended here as they land; the array order IS the tier order.
+ * The tier-4 work cap. Declared in `state.ts` so that `SolverContext` can
+ * carry it without the two files importing each other, and re-exported here
+ * because this is where callers look for it.
+ */
+export { TRIAL_BUDGET } from "./state";
+
+/**
+ * One pass of a tier. Returns whether it changed anything. The array order IS
+ * the tier order, and the index is the tier number the grade reports.
+ *
+ * Tiers 3 and 4 import `runToFixpoint` from this file, which is a cycle. It
+ * is a safe one: every tier is a hoisted `function` declaration and the
+ * import is only ever read when a trial runs, long after both modules have
+ * finished evaluating. Turning a tier into a `const` arrow would break that,
+ * so do not.
  */
 export type TierPass = (d: Deduction) => boolean;
 
-export const TIERS: TierPass[] = [tier0, tier1];
+export const TIERS: TierPass[] = [tier0, tier1, tier2, tier3, tier4];
 
 /** The highest tier the solver knows about. */
 export const MAX_TIER = TIERS.length - 1;
@@ -54,8 +71,6 @@ export interface SolveOptions {
   trialBudget?: number;
 }
 
-export const TRIAL_BUDGET = 20000;
-
 export interface SolveResult {
   state: SolverState;
   steps: Step[];
@@ -69,6 +84,14 @@ export interface SolveResult {
   /** How many surviving pairs are left, for hints and for diagnostics. */
   remaining: number;
   nodes: number;
+  /** What tier 4 spent, against `trialBudget`. */
+  trialNodes: number;
+  /**
+   * True when the hypothesis search stopped because it ran out of budget, so
+   * an unfinished run means "not proved within the budget" rather than "not
+   * provable". The generator must treat such a case as unfair either way.
+   */
+  budgetSpent: boolean;
 }
 
 export function solve(
@@ -76,7 +99,7 @@ export function solve(
   clues: readonly Clue[],
   opts: SolveOptions = {},
 ): SolveResult {
-  const ctx = makeContext(frame, clues);
+  const ctx = makeContext(frame, clues, opts.trialBudget ?? TRIAL_BUDGET);
   const d = newDeduction(ctx, initialState(ctx), opts.record ?? true);
   const tier = runToFixpoint(d, opts.maxTier ?? MAX_TIER);
   return {
@@ -88,6 +111,8 @@ export function solve(
     answer: soleAnswer(d.state),
     remaining: pairCount(d.state),
     nodes: d.nodes,
+    trialNodes: d.trialNodes,
+    budgetSpent: d.trialNodes >= ctx.trialBudget,
   };
 }
 

@@ -181,8 +181,20 @@ Two guards exist because of that, and both were verified by deliberately breakin
 
 ## 7. The deduction solver
 
-*(wave 2, in progress)* — `state.ts` and tiers 0 and 1 are in. Two decisions worth
-recording now.
+Five tiers, tried in order, restarting from tier 0 whenever any of them fires. A tier
+therefore only ever runs when every cheaper tier is saturated, and **the highest tier
+that fired is the grade**: the hardest kind of reasoning the case actually demanded.
+`TIERS` in `solve.ts` is an array and its index *is* the tier number.
+
+| Tier | Name | What it does |
+| --- | --- | --- |
+| 0 | placement | what one card says about one person, plus the murder axioms |
+| 1 | movement | arc consistency along a person's timeline, both directions |
+| 2 | counting | how many were in a room, and who that leaves over |
+| 3 | trust | rule 7 read backwards — only the culprit lies |
+| 4 | hypothesis | suppose an answer, propagate, cross it off on a contradiction |
+
+### Four decisions
 
 **Candidates are pairs, not two sets.** `state.answer[suspect]` is a mask of the slots
 still possible as `t*` *if that suspect did it*. The plan described two flat sets
@@ -190,19 +202,93 @@ still possible as `t*` *if that suspect did it*. The plan described two flat set
 person reasons: "if it was the Colonel it must have been at nine, and he was in the hall
 at nine, so it was not the Colonel" cannot be expressed by two independent sets, which
 would have to keep both the Colonel and nine o'clock alive. Fairness is defined on pairs
-(§4), so this is also exactly the right granularity for eliminations.
+(§4), so this is also exactly the right granularity for an elimination. It pays off again
+in tier 4, where all three flavours of hypothesis are one edit to the same structure.
 
 **Trust is derived, never stored.** `trusted = lying ? allSuspects & ~culprits :
 allSuspects`. Clearing a suspect *is* trusting them, so there is no second structure to
-keep in step. `mayBeLivingIn` / `mustBeLivingIn` are the only sanctioned way for a rule to
-ask about the victim: a rule may push the victim out of a room only when every surviving
-pair agrees they were still alive, and may conclude they were dead only when they are
-forced into that room. That is the likeliest source of unsoundness in the whole wave, so
-it is one named chokepoint rather than a thing each rule gets right on its own.
+keep in step — and tier 3's hypothesis "suppose `s` is innocent" is then literally
+`answer[s] = 0`, one assignment that both narrows the answer and unlocks the testimony.
+`mayBeLivingIn` / `mustBeLivingIn` are the only sanctioned way for a rule to ask about the
+victim: a rule may push the victim out of a room only when every surviving pair agrees
+they were still alive, and may conclude they were dead only when they are *forced* into
+that room. That is the likeliest source of unsoundness in the whole wave, so it is one
+named chokepoint rather than a thing each rule gets right on its own.
 
-`solver.test.ts` is the guard: random cases, then wave 1's exhaustive solver is asked
-whether anything the deduction solver threw away was actually possible. A new rule joins
-that guard — it is not a convention, it is the only thing between a plausible-looking rule
-and cases that cannot be solved.
+**Hypotheses do not nest.** `Deduction.depth` counts suppositions, and tier 4 refuses to
+run above zero. Capping a trial at tier 3 already has that effect, but only as a
+consequence of a number; depth is difficulty, and a case solvable only by supposing two
+things at once is not one a person can be asked to solve. Stating it as a rule means a
+later change to the cap cannot quietly raise the standard the generator certifies against.
+Tier 3 *does* run inside a tier-4 trial, and usefully so — but only inside a slot trial,
+because a culprit or pair trial leaves one candidate and tier 3 needs two.
+
+**The budget is part of the grade** (critical invariant 10). `TRIAL_BUDGET` caps tier 4 at
+one fee per trial plus every state change the trial caused. A trial that would have found
+something but was not run leaves the case unfinished, and the generator throws such cases
+away — so raising the budget changes which cases exist. `SolveResult.budgetSpent` says when
+a run stopped for want of budget, so "not finished" is never mistaken for "proved there is
+nothing more to find".
+
+### Where the tier boundaries actually are
+
+They are not arbitrary, and two of them are easy to get wrong when adding a rule.
+
+- Tier 0 takes only the *liveness* half of `Together` ("they were both alive, so the
+  murder came later") and leaves the room equality to tier 2, because equality is an
+  argument about two people's rows at once. For the same reason tier 0 ignores `Occupied`,
+  `Count` and `Visited` entirely.
+- Tier 1 has no bespoke multi-slot rule. "She could not have reached the cellar and been
+  back by ten" is what repeating the two arc-consistency passes to a fixpoint says; a rule
+  for it would be a second, weaker implementation of the same thing.
+- Tier 3 sits out cases without lying. With lying off everyone is trusted from the start,
+  so supposing somebody innocent adds no card — it only narrows the answer, which is tier
+  4's job and tier 4's grade. A truthful case must never be graded Hard for a trust
+  deduction it could not have made.
+
+### Soundness, and the fairness certificate
+
+Every rule removes only candidates that appear in no legal world consistent with the
+clues. That single property is what the whole game rests on: if a run ends with one
+surviving pair, no other answer exists, and the case is fair. Tiers 3 and 4 inherit it
+rather than adding to it — a trial starts from a state that still contains every
+consistent answer minus what the hypothesis excludes, runs only sound rules, and so a
+contradiction proves the hypothesis impossible.
+
+The one way a trial can go wrong is an *empty question*: a hypothesis that empties the
+candidate set by itself has been refuted by nothing. Both tiers guard against it, and in
+tier 4 the guard is currently unreachable — none of the three narrowings can empty a set
+they each pick a surviving pair from. It is written down anyway, because a fourth
+narrowing that could would fail silently and only on cases where the answer had already
+been cornered.
+
+### How it is guarded
+
+- **`solver.test.ts`** runs random cases across five sizes and four clue densities and
+  asks wave 1's exhaustive solver whether anything the deduction solver threw away was
+  actually possible. The density spread is deliberate: a dense notebook falls to tier 0
+  and a bare one is not solved at all, and neither exercises a hypothesis. It guards
+  itself twice — over 90% of cases must deduce *something*, and **every tier must have
+  come out as some case's grade**, so a tier that quietly stopped firing cannot be
+  certified sound by a suite that never ran it.
+- **`rules/rules.test.ts`** gives each rule a minimal position where it must fire and the
+  same position with the one card removed that made it fire. Random cases are bad at
+  saying *which* rule misbehaved; these say it in a board small enough to read, and each
+  is cross-checked against the exhaustive solver so a wrong expectation fails rather than
+  being enshrined.
+- **Differential fuzzing**, run by hand while the tiers were written: 14,400 cases in
+  which every removed cell and every removed pair was checked against the exhaustive
+  solver, with capacity rules on half of them, and 10,800 more checked for the cheaper
+  property that the truth survives. Zero unsound eliminations, zero contradictions raised
+  from true clues.
+- **Mutation testing**, likewise: nine deliberate bugs planted one at a time. Six changed
+  behaviour and all six were caught — the victim's liveness test dropped from a counting
+  rule, `count-exact` forcing on the wrong comparison, `conflict-pair` clearing the wrong
+  side, a branch forgetting its depth, the depth gate removed, and tier 4 unwired. The
+  three survivors were each shown to be behaviour-preserving rather than test gaps.
+
+Measured on this machine over 800 cases across the four preset shapes: a whole solve
+takes 0.5 ms on Easy and 1.5 ms on Expert, worst case 11 ms. The heaviest case spent
+10,574 of the 20,000 trial budget, and no case exhausted it.
 
 *(wave 3)* — the generator pipeline and the measured sim table.

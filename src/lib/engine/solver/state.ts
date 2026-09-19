@@ -44,6 +44,18 @@ export interface SolverState {
   contradiction: boolean;
 }
 
+/**
+ * The work cap on the bounded hypothesis search in tier 4, in state changes
+ * plus one fee per trial. It is **part of the grade** (critical invariant 10):
+ * raising it turns cases that could not be finished into Expert cases, so it
+ * is a constant of the game and not a tuning knob. Measured in tier4.ts.
+ *
+ * It lives here rather than in `solve.ts` only so that `SolverContext` can
+ * carry it without the two files importing each other; `solve.ts` re-exports
+ * it, which is where callers should read it from.
+ */
+export const TRIAL_BUDGET = 20000;
+
 /** Everything a rule needs that never changes during a run. */
 export interface SolverContext {
   frame: CaseFrame;
@@ -56,11 +68,14 @@ export interface SolverContext {
   allSlots: number;
   /** All rooms, as a room bitmask. */
   allRooms: number;
+  /** Tier 4's work cap. See `TRIAL_BUDGET`. */
+  trialBudget: number;
 }
 
 export function makeContext(
   frame: CaseFrame,
   clues: readonly Clue[],
+  trialBudget: number = TRIAL_BUDGET,
 ): SolverContext {
   return {
     frame,
@@ -69,6 +84,7 @@ export function makeContext(
     allSuspects: fullMask(frame.suspects),
     allSlots: fullMask(frame.slots),
     allRooms: fullMask(frame.plan.rooms.length),
+    trialBudget,
   };
 }
 
@@ -253,6 +269,14 @@ export interface Premises {
   cells: Cell[];
   /** Suspects the step leaned on having been cleared (tier 3 and 4). */
   cleared?: PersonId[];
+  /**
+   * A trial's hypothesis, so that the step can be read back as "suppose ...".
+   * Tier 3 supposes people innocent (and so truthful); tier 4 supposes the
+   * answer was one of a set of pairs. Both are refuted by a contradiction,
+   * which is what the step then records.
+   */
+  assumedInnocent?: PersonId[];
+  assumedAnswer?: Answer[];
 }
 
 export type Conclusion =
@@ -283,8 +307,25 @@ export interface Deduction {
   steps: Step[] | null;
   /** Set by any mutation that actually changed something. */
   changed: boolean;
-  /** Work done, against the tier-4 budget. */
+  /** Work done: every state change, everywhere, including inside trials. */
   nodes: number;
+  /**
+   * Work charged to tier 4's budget. Separate from `nodes` because the budget
+   * must not be eaten by the ordinary propagation a case needs before any
+   * hypothesis is tried.
+   */
+  trialNodes: number;
+  /**
+   * How many suppositions deep this run is: 0 for the real case, 1 inside a
+   * trial, 2 inside a trial that tier 3 opened inside a trial.
+   *
+   * Tier 4 refuses to run above 0, which is what makes "depth 1" a rule of
+   * the game rather than an accident of the tier cap. It matters because
+   * depth is difficulty: a case only solvable by supposing two things at once
+   * is not one a person can be asked to solve, and if such cases could be
+   * certified fair the generator would ship them.
+   */
+  depth: number;
 }
 
 export function newDeduction(
@@ -292,13 +333,23 @@ export function newDeduction(
   state: SolverState,
   record: boolean,
 ): Deduction {
-  return { ctx, state, steps: record ? [] : null, changed: false, nodes: 0 };
+  return {
+    ctx,
+    state,
+    steps: record ? [] : null,
+    changed: false,
+    nodes: 0,
+    trialNodes: 0,
+    depth: 0,
+  };
 }
 
 /** A scratch copy for a hypothesis, sharing the context but not the state. */
 export function branch(d: Deduction): Deduction {
   const b = newDeduction(d.ctx, cloneState(d.state), false);
   b.nodes = d.nodes;
+  b.trialNodes = d.trialNodes;
+  b.depth = d.depth + 1;
   return b;
 }
 

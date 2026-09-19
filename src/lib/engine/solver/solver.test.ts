@@ -6,7 +6,9 @@ import { buildFloorPlan } from "../map";
 import { clueHolds, holds } from "../clues";
 import { simulateTruth } from "../world/simulate";
 import { answerPossible, cellPossible } from "./exhaustive";
-import { solve } from "./solve";
+import { MAX_TIER, runToFixpoint, solve } from "./solve";
+import { tier4 } from "./rules/tier4";
+import { branch, initialState, makeContext, newDeduction } from "./state";
 import { noRules } from "../types";
 import type { CaseFrame, Clue, ClueBody, World } from "../types";
 
@@ -112,12 +114,16 @@ interface Case {
   clues: Clue[];
 }
 
-function randomCase(seed: string, size: {
+interface Size {
   suspects: number;
   rooms: number;
   slots: number;
   lying: boolean;
-}): Case | null {
+  /** How much of the true-clue enumeration to keep. See `DENSITIES`. */
+  density?: number;
+}
+
+function randomCase(seed: string, size: Size): Case | null {
   const rng = new RNG(seed);
   const plan = buildFloorPlan(rng, { rooms: size.rooms });
   const res = simulateTruth(
@@ -129,7 +135,7 @@ function randomCase(seed: string, size: {
   const { frame, world } = res;
   expect(isLegal(frame, world)).toBe(true);
   const all = trueClues(frame, world, rng);
-  const keep = all.filter(() => rng.chance(0.06));
+  const keep = all.filter(() => rng.chance(size.density ?? 0.06));
   if (size.lying) keep.push(...lies(frame, world, rng, 2));
   return { frame, world, clues: rng.shuffle(keep) };
 }
@@ -183,30 +189,57 @@ function assertSound(c: Case) {
   return result;
 }
 
-describe("deduction solver soundness", () => {
-  const SIZES = [
-    { suspects: 3, rooms: 4, slots: 4, lying: false },
-    { suspects: 3, rooms: 5, slots: 5, lying: true },
-    { suspects: 4, rooms: 5, slots: 5, lying: false },
-    { suspects: 4, rooms: 6, slots: 6, lying: true },
-  ];
+const SIZES: Size[] = [
+  { suspects: 3, rooms: 4, slots: 4, lying: false },
+  { suspects: 3, rooms: 5, slots: 5, lying: true },
+  { suspects: 4, rooms: 5, slots: 5, lying: false },
+  { suspects: 4, rooms: 6, slots: 6, lying: true },
+  { suspects: 5, rooms: 7, slots: 7, lying: true },
+];
 
+/**
+ * A spread of clue densities, because the interesting tiers only live in the
+ * middle of it: a dense notebook falls to tier 0 and a bare one is not solved
+ * at all, and neither exercises a hypothesis. The corpus below asserts that
+ * every tier came out as some case's grade, which is what stops this suite
+ * from certifying rules that never ran.
+ */
+const DENSITIES = [0.004, 0.015, 0.04, 0.09];
+
+function corpus(tag: string): Case[] {
+  const out: Case[] = [];
+  for (let seed = 0; seed < 14; seed++) {
+    for (const size of SIZES) {
+      for (const density of DENSITIES) {
+        const c = randomCase(`${tag}:${seed}:${size.rooms}:${density}`, { ...size, density });
+        if (c) out.push(c);
+      }
+    }
+  }
+  return out;
+}
+
+describe("deduction solver soundness", () => {
   it("never removes a possible room, pair or answer", () => {
-    let cases = 0;
     let deduced = 0;
-    for (let seed = 0; seed < 30; seed++) {
-      for (const size of SIZES) {
-        const c = randomCase(`sound:${seed}:${size.rooms}`, size);
-        if (!c) continue;
-        const r = assertSound(c);
-        cases++;
-        if (r.tier >= 0) deduced++;
+    const graded = new Set<number>();
+    const cases = corpus("sound");
+    for (const c of cases) {
+      const r = assertSound(c);
+      if (r.tier >= 0) {
+        deduced++;
+        graded.add(r.tier);
       }
     }
     // Guard the guard: a change that made the solver deduce nothing would
     // satisfy every assertion above vacuously.
-    expect(cases).toBeGreaterThan(100);
-    expect(deduced / cases).toBeGreaterThan(0.9);
+    expect(cases.length).toBeGreaterThan(200);
+    expect(deduced / cases.length).toBeGreaterThan(0.9);
+    // And the other half of the same worry: a tier that never fires is a tier
+    // this suite is quietly certifying without ever having run it.
+    for (let t = 0; t <= MAX_TIER; t++) {
+      expect(graded.has(t), `no case in the corpus was graded tier ${t}`).toBe(true);
+    }
   });
 
   it("stays sound when the culprit lies freely", () => {
@@ -247,18 +280,12 @@ describe("deduction solver soundness", () => {
 
 describe("grading", () => {
   it("reports the hardest tier the case actually needed, and no more", () => {
-    let checked = 0;
-    for (let seed = 0; seed < 20; seed++) {
-      const c = randomCase(`grade:${seed}`, {
-        suspects: 4,
-        rooms: 6,
-        slots: 6,
-        lying: false,
-      });
-      if (!c) continue;
-      const { frame, clues } = c;
+    const seen = new Set<number>();
+    const cases = corpus("grade");
+    for (const { frame, clues } of cases) {
       const full = solve(frame, clues);
       expect(full.tier).toBeGreaterThanOrEqual(0);
+      seen.add(full.tier);
 
       // Capping at the reported tier must change nothing: if it did, the
       // grade would be understating what the case demands.
@@ -275,9 +302,79 @@ describe("grading", () => {
           JSON.stringify(below.state.answer) !== JSON.stringify(full.state.answer);
         expect(weaker, `tier ${full.tier} fired but changed nothing`).toBe(true);
       }
-      checked++;
     }
-    expect(checked).toBeGreaterThan(15);
+    expect(cases.length).toBeGreaterThan(200);
+    // The property above is vacuous for a tier nothing ever grades at.
+    for (let t = 1; t <= MAX_TIER; t++) {
+      expect(seen.has(t), `nothing in the corpus was graded tier ${t}`).toBe(true);
+    }
+  });
+
+  it("treats the trial budget as part of the grade", () => {
+    // Invariant 10. With no budget the hypothesis search cannot run at all,
+    // so a case that needed it must come out weaker, must never come out
+    // *stronger*, and must say it ran out rather than pretend it had proved
+    // there was nothing more to find.
+    let starved = 0;
+    for (const { frame, clues } of corpus("budget")) {
+      const full = solve(frame, clues);
+      if (full.tier < 4) continue;
+      const broke = solve(frame, clues, { trialBudget: 0 });
+      starved++;
+      expect(broke.tier).toBeLessThan(4);
+      expect(broke.budgetSpent).toBe(true);
+      expect(broke.remaining).toBeGreaterThanOrEqual(full.remaining);
+      for (let p = 0; p < frame.people; p++) {
+        for (let t = 0; t < frame.slots; t++) {
+          expect(full.state.dom[p][t] & ~broke.state.dom[p][t]).toBe(0);
+        }
+      }
+    }
+    expect(starved).toBeGreaterThan(0);
+  });
+
+  it("never supposes two things at once", () => {
+    // Depth 1 (ARCHITECTURE.md §7). A solver that could suppose a culprit
+    // and then, inside that supposition, suppose an hour, would certify as
+    // fair cases no person could reason their way through — and it would do
+    // it silently, because such a case looks like any other Expert case from
+    // the outside. So the rule is checked directly: on a case that really
+    // needs the hypothesis search, the tier fires at the top and refuses one
+    // level down, on the very same state.
+    let checked = 0;
+    for (const { frame, clues } of corpus("depth")) {
+      if (solve(frame, clues).tier !== 4) continue;
+      const ctx = makeContext(frame, clues);
+      const d = newDeduction(ctx, initialState(ctx), false);
+      runToFixpoint(d, 3);
+      expect(d.depth).toBe(0);
+
+      // Branch before letting the real run touch anything, so that the two
+      // calls below see byte-identical states and the only difference
+      // between them is how deep they are.
+      const inner = branch(d);
+      expect(inner.depth).toBe(1);
+      expect(tier4(inner), "tier 4 ran inside a trial").toBe(false);
+      expect(tier4(d), "tier 4 had nothing to say on a tier-4 case").toBe(true);
+      checked++;
+      if (checked === 5) break;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it("leaves an ordinary case well inside the budget", () => {
+    // If real cases were routinely hitting the cap, the grade would be
+    // measuring the machine rather than the case.
+    let spent = 0;
+    let worst = 0;
+    const cases = corpus("spend");
+    for (const { frame, clues } of cases) {
+      const r = solve(frame, clues);
+      if (r.budgetSpent) spent++;
+      if (r.trialNodes > worst) worst = r.trialNodes;
+    }
+    expect(spent, `${spent} of ${cases.length} cases exhausted the budget`).toBe(0);
+    expect(worst).toBeGreaterThan(0);
   });
 
   it("never grades above the cap it was given", () => {
