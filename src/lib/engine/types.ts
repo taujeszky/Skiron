@@ -4,7 +4,7 @@
  * and in the authoring CLI.
  *
  * Sizes are deliberately small and bitmask-friendly — both solvers keep a
- * room domain per person per slot as a 16-bit mask.
+ * room domain per person per slot as a bitmask in a single 32-bit int.
  */
 
 export type RoomId = number;
