@@ -269,8 +269,21 @@ export interface ClueModule<K extends ClueKind = ClueKind> {
   valid(body: BodyOf<K>, frame: CaseFrame): boolean;
   /** Which questions release this clue. */
   topicKeys(body: BodyOf<K>, frame: CaseFrame): TopicKey[];
-  /** Wave 2: the engine-written sentence. */
-  template?(body: BodyOf<K>, glossary: Glossary): string;
+  /**
+   * Wave 2: the engine-written sentence. Past tense, no closing stop and no
+   * leading capital, so that a caller can attribute it and punctuate it.
+   *
+   * It takes the frame because two kinds name the victim without carrying a
+   * person id and two more name a door by the rooms it joins; and it takes
+   * the speaker so that a suspect quoting themselves reads "I was in the
+   * library at nine" rather than being named twice in their own statement.
+   */
+  template?(
+    body: BodyOf<K>,
+    frame: CaseFrame,
+    glossary: Glossary,
+    speaker?: PersonId,
+  ): string;
   /** Wave 2: forced-elimination propagators for the deduction solver. */
   propagate?: unknown;
   /** Wave 5: the JSON schema fragment for the fidelity parse-back. */

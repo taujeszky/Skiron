@@ -169,16 +169,50 @@ from the tasks above.
 - Run by hand and recorded in ARCHITECTURE.md §7 rather than committed: 14,400 cases of
   differential fuzzing against the exhaustive solver, and nine planted mutations.
 
-## Still to do
+## Difficulty, sentences and hints as built (2026-09-19)
 
-1. **`difficulty.ts`** — tier ↔ name (Easy ≤ 1, Normal ≤ 2, Hard = 3, Expert = 4; Hard and
-   Expert have lying on) and the preset size table. The *actual* tier is authoritative and
-   is what the UI shows, as in Signpost.
-2. **`explain.ts`** — `clueSentence` and `stepSentence`, over the `Conclusion` union in
-   `state.ts` (`room-set`, `rooms-out`, `pairs-out`, `cleared`, `slots-out`,
-   `contradiction`). Conclusions are data, not prose, precisely so the same step renders as
-   "Suspect B" with no skin and "Mrs Hale" with one — and in Hungarian in wave 9.
-   `Premises` now also carries `assumedInnocent` and `assumedAnswer`, which is how a trial
-   step says what it supposed: one pair reads "suppose it was her, at nine", a whole row
-   "suppose it was her", a whole column "suppose it happened at nine".
-3. **`hint.ts`** — the three branches in the order the plan gives.
+The wave is complete: 330 tests green, `npm run check` at 0/0 over 329 files. ARCHITECTURE
+§8 is the full account; what follows is only where the code differs from the tasks above.
+
+- **Task 5 asked for `clueSentence(clue, glossary)`; both renderers take the frame.** Two
+  clue kinds name the victim without carrying a person id and two more name a door by the
+  rooms it joins, so a sentence cannot be built from a body alone. `stepSentence` also
+  takes the cards, because "Card 3" has to be counted against the notebook's own order —
+  `explainer(frame, cards, glossary)` is the form most callers want.
+- **The per-kind sentences live in the clue modules**, not in `explain.ts`, which is what
+  `ClueModule.template` was declared for in wave 1. `KindModule` makes it required, so a
+  new clue kind cannot compile without a sentence. Its signature gained the speaker, so a
+  suspect quoting themselves says "I" instead of being named twice.
+- **Conclusion first, reason second** — "Mrs Hale must have been in the library at nine,
+  because Card 3 puts somebody there and everyone else is accounted for elsewhere." Task
+  5's example sentence is reason-first, and it reads better that way in isolation, but it
+  needs a pronoun before the name it refers to; over twenty-eight rules that produces
+  sentences nobody can parse.
+- **Task 6 mentions a notebook state that did not exist yet, so `hint.ts` defines one.**
+  It is deliberately coarser than `SolverState`: crossed-out rooms plus two flat lists.
+  A player does not keep a candidate pair per suspect. The same file exports
+  `notebookIsSound`, which is wave 4's Check — one bit, compared against the stored truth
+  and never through a solver (invariant 5).
+- **`difficulty.ts` preset bands are two tiers wide**, so that asking for Expert can
+  settle for Hard rather than retrying until the seed space runs dry. Every number is a
+  starting point for the wave-3 sim table.
+
+### Tests
+
+`explain.test.ts` renders every clue kind as fact and as testimony, and every one of the
+twenty-eight rule ids against every shape of conclusion, with a glossary and without,
+asserting no `undefined`, no raw ids, a capital, a full stop, and — the one that catches a
+hardcoded string — that the skinned sentence always differs from the plain one. It also
+asserts all thirty-four clue renderings are distinct, which is what keeps `Empty` and
+`Count(k = 0)` from colliding in wave 5's fidelity check.
+
+`hint.test.ts` has a test per branch plus the ordering, checks that the mistake warning
+contains no person, room or hour name at all, checks the investigate branch names a topic
+without naming the card's content, and plays eight generated cases through by repeatedly
+taking the advice — asserting the notebook stays sound, every hint adds a mark, and the
+sequence terminates.
+
+`difficulty.test.ts` ties the preset table to the case-id letters and to `MAX_TIER`, and
+pins the one coupling that is easy to break: a preset asking for tier 3 must have lying
+on, because the trust tier sits out truthful cases and such a preset could never be
+satisfied.

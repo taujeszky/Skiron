@@ -15,6 +15,7 @@ import {
   isRoom,
   isSlot,
   mentions,
+  naming,
   span,
   topicKeysFrom,
 } from "./common";
@@ -28,6 +29,8 @@ export const At: KindModule<"At"> = {
     isPerson(frame, b.p) && isSlot(frame, b.t) && isRoom(frame, b.r),
   topicKeys: (b, frame) => topicKeysFrom(At.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], rooms: [b.r], slots: [b.t] }),
+  template: (b, _frame, g, speaker) =>
+    `${naming(g, speaker).subject(b.p)} was in ${g.roomName(b.r)} at ${g.slotLabel(b.t)}`,
 };
 
 export const NotAt: KindModule<"NotAt"> = {
@@ -39,6 +42,8 @@ export const NotAt: KindModule<"NotAt"> = {
     isPerson(frame, b.p) && isSlot(frame, b.t) && isRoom(frame, b.r),
   topicKeys: (b, frame) => topicKeysFrom(NotAt.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], rooms: [b.r], slots: [b.t] }),
+  template: (b, _frame, g, speaker) =>
+    `${naming(g, speaker).subject(b.p)} was not in ${g.roomName(b.r)} at ${g.slotLabel(b.t)}`,
 };
 
 export const Stayed: KindModule<"Stayed"> = {
@@ -69,6 +74,13 @@ export const Stayed: KindModule<"Stayed"> = {
   topicKeys: (b, frame) => topicKeysFrom(Stayed.mentions(b, frame), frame),
   mentions: (b) =>
     mentions({ people: [b.p], rooms: [b.r], slots: span(b.t1, b.t2) }),
+  template: (b, _frame, g, speaker) => {
+    const n = Stayed.normalise(b);
+    return (
+      `${naming(g, speaker).subject(n.p)} did not leave ${g.roomName(n.r)} ` +
+      `between ${g.slotLabel(n.t1)} and ${g.slotLabel(n.t2)}`
+    );
+  },
 };
 
 export const Visited: KindModule<"Visited"> = {
@@ -79,6 +91,8 @@ export const Visited: KindModule<"Visited"> = {
   valid: (b, frame) => isPerson(frame, b.p) && isRoom(frame, b.r),
   topicKeys: (b, frame) => topicKeysFrom(Visited.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], rooms: [b.r] }),
+  template: (b, _frame, g, speaker) =>
+    `${naming(g, speaker).subject(b.p)} was in ${g.roomName(b.r)} at some point that evening`,
 };
 
 export const NeverVisited: KindModule<"NeverVisited"> = {
@@ -90,6 +104,8 @@ export const NeverVisited: KindModule<"NeverVisited"> = {
   topicKeys: (b, frame) =>
     topicKeysFrom(NeverVisited.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], rooms: [b.r] }),
+  template: (b, _frame, g, speaker) =>
+    `${naming(g, speaker).subject(b.p)} never set foot in ${g.roomName(b.r)}`,
 };
 
 /** Walk the frame's slots, not the row's length: the frame is authoritative. */

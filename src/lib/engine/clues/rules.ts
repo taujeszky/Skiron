@@ -14,11 +14,14 @@ import { headCount } from "../axioms";
 import type { CaseFrame, DoorId, PersonId, SlotIndex, World } from "../types";
 import type { KindModule } from "./common";
 import {
+  doorBetween,
+  headsWord,
   isDoor,
   isPerson,
   isRoom,
   isSlot,
   mentions,
+  naming,
   span,
   topicKeysFrom,
 } from "./common";
@@ -74,6 +77,13 @@ export const DoorClosed: KindModule<"DoorClosed"> = {
     b.from < b.to,
   topicKeys: (b, frame) => topicKeysFrom(DoorClosed.mentions(b, frame), frame),
   mentions: (b) => mentions({ doors: [b.door], slots: span(b.from, b.to) }),
+  template: (b, frame, g) => {
+    const n = DoorClosed.normalise(b);
+    return (
+      `the door between ${doorBetween(frame, n.door, g)} was locked ` +
+      `between ${g.slotLabel(n.from)} and ${g.slotLabel(n.to)}`
+    );
+  },
 };
 
 export const BarredDoor: KindModule<"BarredDoor"> = {
@@ -89,6 +99,8 @@ export const BarredDoor: KindModule<"BarredDoor"> = {
   valid: (b, frame) => isPerson(frame, b.p) && isDoor(frame, b.door),
   topicKeys: (b, frame) => topicKeysFrom(BarredDoor.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], doors: [b.door] }),
+  template: (b, frame, g, speaker) =>
+    `${naming(g, speaker).subject(b.p)} never used the door between ${doorBetween(frame, b.door, g)}`,
 };
 
 export const BarredRoom: KindModule<"BarredRoom"> = {
@@ -104,6 +116,11 @@ export const BarredRoom: KindModule<"BarredRoom"> = {
   valid: (b, frame) => isPerson(frame, b.p) && isRoom(frame, b.r),
   topicKeys: (b, frame) => topicKeysFrom(BarredRoom.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], rooms: [b.r] }),
+  // Not the same sentence as `NeverVisited`, and not by accident: this is a
+  // rule of the house saying they *could not*, where the other is an
+  // observation that they *did not*.
+  template: (b, _frame, g, speaker) =>
+    `${naming(g, speaker).subject(b.p)} could not enter ${g.roomName(b.r)} at all that evening`,
 };
 
 export const Capacity: KindModule<"Capacity"> = {
@@ -123,4 +140,8 @@ export const Capacity: KindModule<"Capacity"> = {
   valid: (b, frame) => isRoom(frame, b.r) && Number.isInteger(b.k) && b.k >= 1,
   topicKeys: (b, frame) => topicKeysFrom(Capacity.mentions(b, frame), frame),
   mentions: (b) => mentions({ rooms: [b.r] }),
+  // Phrased so the room is not the first word: a glossary is free to return
+  // "the scullery", and a sentence may not begin mid-phrase.
+  template: (b, _frame, g) =>
+    `at most ${headsWord(b.k)} could be in ${g.roomName(b.r)} at once`,
 };

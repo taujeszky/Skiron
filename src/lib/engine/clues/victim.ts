@@ -20,6 +20,8 @@ export const AliveAt: KindModule<"AliveAt"> = {
   valid: (b, frame) => isSlot(frame, b.t),
   topicKeys: (b, frame) => topicKeysFrom(AliveAt.mentions(b, frame), frame),
   mentions: (b, frame) => mentions({ people: [frame.victim], slots: [b.t] }),
+  template: (b, frame, g) =>
+    `${g.personName(frame.victim)} was still alive at ${g.slotLabel(b.t)}`,
 };
 
 export const DeathWindow: KindModule<"DeathWindow"> = {
@@ -40,4 +42,10 @@ export const DeathWindow: KindModule<"DeathWindow"> = {
   topicKeys: (b, frame) => topicKeysFrom(DeathWindow.mentions(b, frame), frame),
   mentions: (b, frame) =>
     mentions({ people: [frame.victim], slots: span(b.a, b.b) }),
+  template: (b, frame, g) => {
+    const n = DeathWindow.normalise(b);
+    const who = g.personName(frame.victim);
+    if (n.a === n.b) return `${who} was killed at ${g.slotLabel(n.a)}`;
+    return `${who} was killed between ${g.slotLabel(n.a)} and ${g.slotLabel(n.b)}`;
+  },
 };

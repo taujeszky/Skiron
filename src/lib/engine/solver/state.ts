@@ -258,6 +258,45 @@ export type RuleId =
   | "trial-slot"
   | "trial-pair";
 
+/**
+ * Every rule id, as a value. The object is keyed by `RuleId`, so a rule that
+ * joins the union and not this list is a compile error — which is what lets
+ * `explain.test.ts` claim it has rendered *every* rule rather than every rule
+ * somebody remembered to add.
+ */
+const ALL_RULES: Readonly<Record<RuleId, true>> = {
+  "clue-at": true,
+  "clue-not-at": true,
+  "clue-stayed": true,
+  "clue-saw": true,
+  "clue-alone": true,
+  "clue-empty": true,
+  "clue-never-visited": true,
+  "clue-alive-at": true,
+  "clue-death-window": true,
+  "victim-seen-alive": true,
+  "body-at-end": true,
+  opportunity: true,
+  "witness-in-room": true,
+  "sealed-after": true,
+  "sealed-back": true,
+  "victim-not-yet-dead": true,
+  "reach-forward": true,
+  "reach-backward": true,
+  "occupied-last-one": true,
+  "count-exact": true,
+  "count-capacity": true,
+  "visited-last-slot": true,
+  "together-same-room": true,
+  "self-incrimination": true,
+  "conflict-pair": true,
+  "trial-culprit": true,
+  "trial-slot": true,
+  "trial-pair": true,
+};
+
+export const RULE_IDS = Object.keys(ALL_RULES) as RuleId[];
+
 export interface Cell {
   p: PersonId;
   t: SlotIndex;

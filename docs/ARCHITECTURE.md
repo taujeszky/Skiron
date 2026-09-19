@@ -291,4 +291,83 @@ Measured on this machine over 800 cases across the four preset shapes: a whole s
 takes 0.5 ms on Easy and 1.5 ms on Expert, worst case 11 ms. The heaviest case spent
 10,574 of the 20,000 trial budget, and no case exhausted it.
 
+## 8. Sentences, the notebook and hints
+
+### Where the words live
+
+Each clue kind renders its own sentence, in its own module, through
+`ClueModule.template`. `KindModule` makes it **required**, so a new clue kind
+cannot compile without one — which is the same trick `RuleId` plays on
+`explain.ts`, and for the same reason: a card with nothing written on it, or a
+deduction with no sentence, is not a thing that can be shown to a player.
+
+Three rules the templates keep:
+
+- **Past tense, no leading capital, no closing stop.** The caller punctuates,
+  because the same clause is used bare, attributed, and (in wave 5) compared
+  with what a model wrote.
+- **A speaker refers to themselves in the first person.** "Mrs Hale says: I was
+  in the library at nine", not her name twice in her own statement. That is
+  what the `speaker` argument is for, and `naming()` in `clues/common.ts` is
+  the only place it is interpreted.
+- **No two kinds may share a sentence.** `Empty` and `Count(k = 0)` say the
+  same thing about the world and must not say it the same way, because wave
+  5's fidelity check reads prose back to a clue and two kinds spelled alike
+  would make that ambiguous. A test asserts all 34 renderings are distinct.
+
+`explain.ts` puts the conclusion first and the reason second — "Mrs Hale must
+have been in the library at nine, because Card 3 puts somebody there and
+everyone else is accounted for elsewhere." Reason-first reads better in
+isolation but needs a pronoun before the name it refers to, and across
+twenty-eight rules that produces sentences nobody can parse.
+
+**Everything the player sees is numbered from one**, rooms and slots included,
+while the engine counts from zero throughout. A notebook showing "slot 0" next
+to an hour labelled "one" would make a player doubt the grid, and doubting the
+grid is fatal in a game whose whole promise is that the grid is fair.
+
+### The notebook, and the Check
+
+`Notebook` (in `hint.ts`) is **deliberately coarser than `SolverState`**: a
+grid of crossed-out rooms, plus two flat lists for suspects and hours. A player
+does not keep a candidate *pair* per suspect, and a hint system that assumed
+they did would offer deductions nobody could write down. So a `pairs-out`
+conclusion is only ever news to a player when it takes out a whole suspect or a
+whole hour.
+
+`notebookIsSound` is the Check, and it is one bit: is everything crossed out
+actually false? It compares with the stored truth and **never asks a solver**
+(critical invariant 5), so a bug in a deduction rule can make a hint useless
+but can never tell a player that a true thing is false. It says nothing about
+whether the notebook is complete or whether the marks follow from the cards —
+a player may guess, and a lucky guess is not a mistake.
+
+### Hints
+
+Three branches, in this order, on the cards the player has actually collected:
+
+1. **A mistake in the notebook**, said without ever naming the cell. It comes
+   first because every correct hint given to a player reasoning from a bad
+   notebook leads them further astray.
+2. **The lowest-tier step** the solver found whose conclusion the notebook does
+   not already hold. Lowest tier rather than first found: the step list is the
+   order the rules happened to fire, and a player wants the easiest thing they
+   missed.
+3. **A topic to investigate** — who to ask and about what, for the next card
+   the proof needs. A topic and a person, never a card id and never its
+   content (invariant 8).
+
+Then "you have everything you need". A test plays cases through by taking the
+advice repeatedly, and asserts that the notebook stays sound at every step, that
+each hint adds a mark, and that the sequence terminates.
+
+### Difficulty
+
+`difficulty.ts` holds the tier-to-name map (Easy ≤ 1, Normal 2, Hard 3, Expert
+4) and the preset size table. **The actual tier is authoritative** — a preset is
+a request, and asking for Expert may legitimately return a Hard case, which is
+why each preset's band is two tiers wide. Every number in that table is a
+*starting point* to be replaced from the wave-3 sim table; they are written down
+now so the generator has something to aim at, not because they are right.
+
 *(wave 3)* — the generator pipeline and the measured sim table.

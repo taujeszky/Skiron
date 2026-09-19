@@ -19,6 +19,7 @@ import type {
   ClueKind,
   ClueModule,
   DoorId,
+  Glossary,
   PersonId,
   RoomId,
   SlotIndex,
@@ -36,6 +37,19 @@ export interface Mentions {
 /** A clue module as this directory writes it: the contract plus `mentions`. */
 export interface KindModule<K extends ClueKind> extends ClueModule<K> {
   mentions(body: BodyOf<K>, frame: CaseFrame): Mentions;
+  /**
+   * Required here, optional in `ClueModule`. Inside this directory a clue
+   * kind without a sentence cannot exist: it would be a card with nothing
+   * written on it, and the template is also the text shown whenever the LLM
+   * prose for a card fails its fidelity check. A compile error is a cheaper
+   * way to insist on that than a test somebody has to remember to extend.
+   */
+  template(
+    body: BodyOf<K>,
+    frame: CaseFrame,
+    glossary: Glossary,
+    speaker?: PersonId,
+  ): string;
 }
 
 function sortUnique(xs: readonly number[]): number[] {
@@ -92,6 +106,62 @@ export function topicKeysFrom(m: Mentions, frame: CaseFrame): TopicKey[] {
     ...sortUnique(rooms).map((r) => topic.room(r)),
     ...sortUnique(m.slots).map((t) => topic.slot(t)),
   ];
+}
+
+/* ---------------------------------------------------------- the wording */
+
+/**
+ * How a sentence names people. A speaker quoting themselves says "I",
+ * because "Mrs Hale says: Mrs Hale was in the library at nine" names her
+ * twice and reads like a badly kept transcript. Two forms, because English
+ * needs both — the subject of a clause and the object of one.
+ */
+export interface Naming {
+  subject(p: PersonId): string;
+  object(p: PersonId): string;
+  isSelf(p: PersonId): boolean;
+}
+
+export function naming(glossary: Glossary, speaker?: PersonId): Naming {
+  const self = (p: PersonId) => speaker !== undefined && p === speaker;
+  return {
+    subject: (p) => (self(p) ? "I" : glossary.personName(p)),
+    object: (p) => (self(p) ? "me" : glossary.personName(p)),
+    isSelf: self,
+  };
+}
+
+/**
+ * Counts in prose are words: "exactly two people" is a sentence and
+ * "exactly 2 people" is a debug dump. The list runs to `MAX_PEOPLE`, which is
+ * as high as any count in this game can go.
+ */
+const NUMBER_WORDS = [
+  "no",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+];
+
+export function headsWord(k: number): string {
+  if (k === 1) return "one person";
+  return `${NUMBER_WORDS[k] ?? String(k)} people`;
+}
+
+/** A door has no name of its own; it is named by the two rooms it joins. */
+export function doorBetween(
+  frame: CaseFrame,
+  e: DoorId,
+  glossary: Glossary,
+): string {
+  const door = frame.plan.doors[e];
+  if (!door) return "two rooms";
+  return `${glossary.roomName(door.a)} and ${glossary.roomName(door.b)}`;
 }
 
 /* --------------------------------------------------- structural validity */

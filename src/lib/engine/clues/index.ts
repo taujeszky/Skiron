@@ -16,6 +16,8 @@ import type {
   ClueBody,
   ClueKind,
   ClueModule,
+  Glossary,
+  PersonId,
   TopicKey,
   World,
 } from "../types";
@@ -124,6 +126,20 @@ export function topicKeys(body: ClueBody, frame: CaseFrame): TopicKey[] {
  */
 export function clueMentions(body: ClueBody, frame: CaseFrame): Mentions {
   return moduleOf(body).mentions(body, frame);
+}
+
+/**
+ * The engine-written sentence for a clue body: past tense, no closing stop
+ * and no leading capital, so the caller can attribute and punctuate it.
+ * `explain.ts#clueSentence` is what most callers want.
+ */
+export function template(
+  body: ClueBody,
+  frame: CaseFrame,
+  glossary: Glossary,
+  speaker?: PersonId,
+): string {
+  return moduleOf(body).template(body, frame, glossary, speaker);
 }
 
 /* ------------------------------------------------------------- the clue */

@@ -10,7 +10,7 @@
 
 import { headCount, presentMask } from "../axioms";
 import type { KindModule } from "./common";
-import { isRoom, isSlot, mentions, topicKeysFrom } from "./common";
+import { headsWord, isRoom, isSlot, mentions, topicKeysFrom } from "./common";
 
 export const Occupied: KindModule<"Occupied"> = {
   kind: "Occupied",
@@ -20,6 +20,8 @@ export const Occupied: KindModule<"Occupied"> = {
   valid: (b, frame) => isRoom(frame, b.r) && isSlot(frame, b.t),
   topicKeys: (b, frame) => topicKeysFrom(Occupied.mentions(b, frame), frame),
   mentions: (b) => mentions({ rooms: [b.r], slots: [b.t] }),
+  template: (b, _frame, g) =>
+    `somebody was in ${g.roomName(b.r)} at ${g.slotLabel(b.t)}`,
 };
 
 export const Empty: KindModule<"Empty"> = {
@@ -30,6 +32,8 @@ export const Empty: KindModule<"Empty"> = {
   valid: (b, frame) => isRoom(frame, b.r) && isSlot(frame, b.t),
   topicKeys: (b, frame) => topicKeysFrom(Empty.mentions(b, frame), frame),
   mentions: (b) => mentions({ rooms: [b.r], slots: [b.t] }),
+  template: (b, _frame, g) =>
+    `nobody was in ${g.roomName(b.r)} at ${g.slotLabel(b.t)}`,
 };
 
 export const Count: KindModule<"Count"> = {
@@ -47,4 +51,13 @@ export const Count: KindModule<"Count"> = {
     b.k <= frame.people,
   topicKeys: (b, frame) => topicKeysFrom(Count.mentions(b, frame), frame),
   mentions: (b) => mentions({ rooms: [b.r], slots: [b.t] }),
+  // A zero count says the same thing as `Empty` and must not say it the same
+  // way: wave 5's fidelity check reads a sentence back to a clue, and two
+  // kinds sharing a sentence would make that ambiguous.
+  template: (b, _frame, g) => {
+    const where = `in ${g.roomName(b.r)} at ${g.slotLabel(b.t)}`;
+    if (b.k === 0) return `not a soul was ${where}`;
+    const verb = b.k === 1 ? "was" : "were";
+    return `there ${verb} exactly ${headsWord(b.k)} ${where}`;
+  },
 };

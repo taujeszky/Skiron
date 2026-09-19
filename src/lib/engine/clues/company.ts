@@ -10,7 +10,14 @@
 import { isLiving, presentMask } from "../axioms";
 import { bit, has } from "../bits";
 import type { KindModule } from "./common";
-import { isPerson, isRoom, isSlot, mentions, topicKeysFrom } from "./common";
+import {
+  isPerson,
+  isRoom,
+  isSlot,
+  mentions,
+  naming,
+  topicKeysFrom,
+} from "./common";
 
 export const Saw: KindModule<"Saw"> = {
   kind: "Saw",
@@ -35,6 +42,15 @@ export const Saw: KindModule<"Saw"> = {
   topicKeys: (b, frame) => topicKeysFrom(Saw.mentions(b, frame), frame),
   mentions: (b) =>
     mentions({ people: [b.p, b.q], rooms: [b.r], slots: [b.t] }),
+  // Told by one of the two it reads as an eyewitness account, which is what
+  // it is; told by anyone else it is a fact about a room.
+  template: (b, _frame, g, speaker) => {
+    const n = naming(g, speaker);
+    const where = `in ${g.roomName(b.r)} at ${g.slotLabel(b.t)}`;
+    if (n.isSelf(b.p)) return `I saw ${n.object(b.q)} ${where}`;
+    if (n.isSelf(b.q)) return `I saw ${n.object(b.p)} ${where}`;
+    return `${n.subject(b.p)} and ${n.subject(b.q)} were both ${where}`;
+  },
 };
 
 export const Together: KindModule<"Together"> = {
@@ -56,6 +72,15 @@ export const Together: KindModule<"Together"> = {
     isSlot(frame, b.t),
   topicKeys: (b, frame) => topicKeysFrom(Together.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p, b.q], slots: [b.t] }),
+  // The room is deliberately not named: that is the whole difference between
+  // this and `Saw`, and the sentence has to keep it.
+  template: (b, _frame, g, speaker) => {
+    const n = naming(g, speaker);
+    const when = `at ${g.slotLabel(b.t)}`;
+    if (n.isSelf(b.p)) return `I was with ${n.object(b.q)} ${when}`;
+    if (n.isSelf(b.q)) return `I was with ${n.object(b.p)} ${when}`;
+    return `${n.subject(b.p)} and ${n.subject(b.q)} were in the same room ${when}`;
+  },
 };
 
 export const AloneIn: KindModule<"AloneIn"> = {
@@ -67,4 +92,6 @@ export const AloneIn: KindModule<"AloneIn"> = {
     isPerson(frame, b.p) && isSlot(frame, b.t) && isRoom(frame, b.r),
   topicKeys: (b, frame) => topicKeysFrom(AloneIn.mentions(b, frame), frame),
   mentions: (b) => mentions({ people: [b.p], rooms: [b.r], slots: [b.t] }),
+  template: (b, _frame, g, speaker) =>
+    `${naming(g, speaker).subject(b.p)} was alone in ${g.roomName(b.r)} at ${g.slotLabel(b.t)}`,
 };
