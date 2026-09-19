@@ -101,6 +101,12 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 - **Driving the real app** settles "does this really happen in the game?" without a test
   framework: see the CDP notes in `../newsignpost/CLAUDE.md`. Mind the dev port (:1430)
   and the HMR second-instance trap described there.
+- **Backticks break the Bash tool here.** A heredoc, even a quoted one, fails with
+  `unexpected EOF while looking for matching` the moment the body contains a backtick, so
+  TypeScript with template literals cannot be written that way. Use the Write tool for
+  source files, and for surgical edits write a Python script with Write and run it - the
+  same trap bites `python -c \"...\"` inside double quotes, where bash substitutes the
+  backticks before Python ever sees them.
 - vitest sometimes swallows `console.log`; write debug output to a file instead.
 - `../index.html` (the portfolio catalog) has very long lines of embedded art and cannot
   be read whole; read it in slices.
