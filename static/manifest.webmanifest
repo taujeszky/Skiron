@@ -1,0 +1,31 @@
+{
+  "name": "Skiron — murder mysteries that are provably fair",
+  "short_name": "Skiron",
+  "description": "A floor plan, a handful of suspects, an evening in slots, and a body. Work out who was where and when, then name the killer and the hour.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#15151a",
+  "theme_color": "#1a1a20",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

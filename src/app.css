@@ -1,0 +1,213 @@
+/* Light: a case file on aged paper. Dark: the same file under a desk lamp.
+   Every colour used by the app lives in both blocks; nothing is hard-coded in
+   a component. Person colours are a fixed ordered palette — a suspect's index
+   picks one, so a token, a notebook row and a portrait ring always agree. */
+:root {
+  color-scheme: light;
+  /* chrome */
+  --bg: #efeae0;
+  --panel: #fdfbf6;
+  --panel-2: #f5f1e8;
+  --panel-border: #d9d2c2;
+  --text: #2a2721;
+  --text-dim: #857f72;
+  --accent: #8c2f2f;
+  --accent-text: #fdfbf6;
+  --danger: #c23b3b;
+  --ok: #2f7d4f;
+  --warn: #b5791a;
+  --shadow: 0 8px 30px rgba(40, 32, 20, 0.16);
+  --focus: #8c2f2f;
+
+  /* floor plan */
+  --plan-bg: #f6f2e8;
+  --room-fill: #fffdf7;
+  --room-fill-alt: #f3efe3;
+  --room-stroke: #b9b1a0;
+  --wall: #6f685b;
+  --door: #a8925f;
+  --door-closed: #c23b3b;
+  --room-label: #6f685b;
+  --room-hot: rgba(140, 47, 47, 0.14);
+  --body-room: rgba(194, 59, 59, 0.13);
+  --body-room-stroke: #c23b3b;
+
+  /* notebook grid */
+  --grid-line: #ddd6c6;
+  --grid-header: #ebe5d8;
+  --cell-bg: #fffdf7;
+  --cell-set: rgba(47, 125, 79, 0.15);
+  --cell-out: #b5aa96;
+  --pencil: #5c5749;
+  --cell-error: rgba(194, 59, 59, 0.18);
+  --cell-hint: rgba(181, 121, 26, 0.22);
+
+  /* evidence */
+  --card-bg: #fffdf7;
+  --card-border: #ddd6c6;
+  --card-fact: #2f6c7d;
+  --card-testimony: #7a4f8c;
+  --card-rule: #8a6b23;
+  --canon: #857f72;
+
+  /* people — index 0..7 */
+  --p0: #2f6c7d;
+  --p1: #a2542b;
+  --p2: #4a6b25;
+  --p3: #7a4f8c;
+  --p4: #b0812a;
+  --p5: #29617f;
+  --p6: #8c3a5a;
+  --p7: #3d6b5c;
+  --victim: #6b6357;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #15151a;
+  --panel: #1e1e25;
+  --panel-2: #24242c;
+  --panel-border: #343441;
+  --text: #e6e2d8;
+  --text-dim: #8d8a83;
+  --accent: #d05e5e;
+  --accent-text: #15151a;
+  --danger: #ef6b6b;
+  --ok: #4fc183;
+  --warn: #e0a83c;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  --focus: #d05e5e;
+
+  --plan-bg: #191920;
+  --room-fill: #24242c;
+  --room-fill-alt: #1f1f27;
+  --room-stroke: #3d3d4a;
+  --wall: #9b978d;
+  --door: #c2a468;
+  --door-closed: #ef6b6b;
+  --room-label: #9b978d;
+  --room-hot: rgba(208, 94, 94, 0.18);
+  --body-room: rgba(239, 107, 107, 0.15);
+  --body-room-stroke: #ef6b6b;
+
+  --grid-line: #343441;
+  --grid-header: #25252e;
+  --cell-bg: #1e1e25;
+  --cell-set: rgba(79, 193, 131, 0.18);
+  --cell-out: #55525c;
+  --pencil: #b3afa5;
+  --cell-error: rgba(239, 107, 107, 0.2);
+  --cell-hint: rgba(224, 168, 60, 0.24);
+
+  --card-bg: #22222a;
+  --card-border: #343441;
+  --card-fact: #58b6cc;
+  --card-testimony: #bd8fd6;
+  --card-rule: #dcb654;
+  --canon: #8d8a83;
+
+  --p0: #58b6cc;
+  --p1: #e08a55;
+  --p2: #9ac45c;
+  --p3: #bd8fd6;
+  --p4: #e3c063;
+  --p5: #6fa8d6;
+  --p6: #dd7fa1;
+  --p7: #6fc2a8;
+  --victim: #9b978d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  user-select: none;
+  -webkit-user-select: none;
+  /* a drag across the floor plan must never become a pull-to-refresh */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    opacity 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.btn.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+select,
+input[type="text"],
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+select:focus,
+input:focus,
+textarea:focus,
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
+}
+
+label.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+}
+
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
