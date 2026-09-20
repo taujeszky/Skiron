@@ -5,14 +5,15 @@
  *
  * **Why it is a sample and not the whole pool.** The plan said "start from
  * every clue, shuffle, and drop each clue if the solver still finishes
- * without it". Measured, that is between 240 clues on the Easy shape and
- * 1,825 on Expert once every speaker who could say a thing is counted, and a
- * pass costs one `solve` per clue. On Expert that is about a second per
- * attempt before any retry — affordable once, ruinous with retries, and the
- * whole of it spent proving over and over that the four hundredth `NotAt`
- * was not load-bearing. Sampling first cuts it to ~110 ms at Expert p95 for
- * the same result: measured over 24 seeds a preset, the shipped set is the
- * same size (5 to 8 cards) and the tier spread is the same shape.
+ * without it". Measured over 20 seeds a preset with the pool this engine
+ * actually builds, that is **625 clues on Easy and 2,089 on Expert** once
+ * every speaker who could say a thing is counted — four times the count of
+ * distinct *bodies*, which is the number it is easy to quote by mistake — and
+ * a pass costs one `solve` per clue: 76 ms on Easy, 1,503 ms on Expert, most
+ * of it spent proving over and over that the four hundredth `NotAt` was not
+ * load-bearing. Drawing a weighted sample first and growing it only when the
+ * draw fails to prove the case reaches the same shipped set for a quarter to
+ * a seventh of that — 11 ms and 402 ms at the finished generator's p50.
  *
  * **The expensive solves are the failures, not the successes.** A solve on a
  * set that still proves the case is fast — 0.25 ms on 400 clues, because the

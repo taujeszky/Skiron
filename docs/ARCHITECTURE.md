@@ -483,12 +483,14 @@ which is what `bank.ts#spreadGaps` exists to cover up.
 ### A sample, not everything
 
 The plan said "start from every clue, shuffle, and drop each clue if the solver
-still finishes without it". Measured, the pool is 516 clues on Easy and about
-1,800 on Expert once every speaker who could say a thing is counted, and the
-pass costs one `solve` per clue — around a second per Expert attempt, spent
-proving over and over that the four hundredth `NotAt` was not load-bearing.
-Drawing a weighted sample first and growing it only if it fails to prove the
-case gives the same shipped set for a fifth of the time.
+still finishes without it". Measured over 20 seeds a preset, the pool is 625
+clues on Easy and 2,089 on Expert once every speaker who could say a thing is
+counted — four times the count of distinct *bodies*, which is the number it is
+easy to quote by mistake — and the pass costs one `solve` per clue: 76 ms on
+Easy and 1,503 ms on Expert, most of it spent proving over and over that the
+four hundredth `NotAt` was not load-bearing. Drawing a weighted sample first
+and growing it only when the draw fails to prove the case reaches the same
+shipped set for a quarter to a seventh of that.
 
 The counter-intuitive part, which decides how the loop is sized: **the
 expensive solves are the refused drops, not the accepted ones.** A solve on a
