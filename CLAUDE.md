@@ -165,6 +165,18 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
   it.** The name ends in `.test.ts`, so `npm test`'s include pattern matched the live
   test and made three unintended API calls the first time that file existed. The
   `exclude` line in that config is a spending guard, not tidiness.
+- **`Network.emulateNetworkConditions` cuts the PAGE's network, not the service
+  worker's.** They are separate targets, so a same-origin request the worker handles can
+  still reach the network while the page believes the plug is out. A wave-7 check
+  "proved" that a case nobody had opened had its pictures available offline, which is
+  impossible - they had never been fetched. `tools/offline.mjs` has the same blind spot
+  and gets away with it because what it tests is in-page generation. To ask what is
+  really cached, ask `caches.match()`; to really cut the network, stop the server.
+- **`tools/offline.mjs` reuses a Chrome profile, so a STALE service worker survives
+  between runs.** The tell is in its own output: the cache name ends in the build's
+  version stamp, so `cache "skiron-1789942356000"` after a newer build means the run
+  tested the previous one. Delete `%LOCALAPPDATA%/Temp/skpt<port>` to force a clean
+  install. This is a third member of the stale-preview family and bit wave 7 twice.
 - **A string search of a GENERATED file is not evidence about what it does.**
   `build/service-worker.js` computes its precache list at runtime from arrays the
   bundler inlines, so grepping it for a path finds the raw `files` manifest and says

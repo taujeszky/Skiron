@@ -238,6 +238,44 @@ thing to keep in step with the map, the notebook, the cast strip and the chat.
 It gained an `art` prop and `look.ts` gained the initials and the standalone
 SVG.
 
+### The two exit criteria, and the one that needed a caveat
+
+**"A visitor with a key gets portraits for a freshly generated case without
+the game ever blocking on them."** Met, and it is the property the whole wave
+is arranged around. `game/art.test.ts` holds it with a provider whose calls
+finish only when told to, so a case that awaited its pictures would hang
+rather than pass.
+
+**"A keyless visitor can play twelve illustrated cases offline."** Met with a
+caveat that the plan does not acknowledge, because task 8 asks for the
+opposite of it in the same document. Task 8 says to keep images out of the
+install and cache them on first view; that is what "the install stays light"
+*means*. So a case the visitor has never opened is, offline, not illustrated.
+
+Measured by asking CacheStorage directly rather than by inferring it:
+
+| | case JSON | its pictures |
+| --- | --- | --- |
+| after install, nothing opened | cached | **not** cached |
+| after opening one case | cached | cached |
+| a case never opened | cached | not cached |
+
+So: every one of the twelve opens and plays offline from a cold start, in
+full prose, with monograms where the faces would be — which is a complete
+game and was the only game through wave 6. Once seen, a case keeps its
+pictures for good. Precaching the lot is a one-line change in
+`lib/util/precache.ts` and costs 1.40 MB on first visit; wave 8's polish pass
+should decide, and should know that a visitor who plays one case would be
+paying for eleven they never opened.
+
+A note on how that was measured, because the obvious way is wrong.
+`Network.emulateNetworkConditions` applies to the page target, and a service
+worker runs in its own — so a same-origin fetch the worker makes can still
+reach the network while the page believes it is offline. A first attempt
+"proved" that an unvisited case had its pictures offline, which is
+impossible. `tools/offline.mjs`'s cross-origin probe has the same blind spot
+and gets away with it only because what it tests is in-page generation.
+
 ### What the plan did not say, and should have
 
 **Two structural prohibitions belong in task 5.** "No text, no clocks and no
