@@ -223,6 +223,49 @@ describe("a case with art turned on", () => {
     expect(paint.calls[0].aspect).toBe("1:1");
   });
 
+  it("pays once when the same case is opened twice in a row", async () => {
+    // Opening a case twice must buy its pictures once.
+    //
+    // **What actually makes this pass is worth being exact about, because it
+    // is not the thing the code looks like it is testing.** `open` begins
+    // with `cancelLoad`, so two overlapping opens serialise — the first never
+    // reaches `showGame` at all — and only one art run is ever started. The
+    // run ticket in `startArt` is not what this exercises.
+    //
+    // That was established rather than assumed: a mutation run deleted the
+    // ticket's second check and every test here still passed, including this
+    // one. The window that check covers — two runs both past the abort check
+    // and neither holding an AbortController yet — is real, but it cannot be
+    // produced through the public API, because every route to `showGame`
+    // cancels the previous load first. So the check stays, cheap and
+    // defensive, and is recorded in ARCHITECTURE as a guard no test reaches.
+    // Writing a test that passed for the wrong reason and calling it covered
+    // is the exact failure waves 1 to 3 each turned up.
+    const paint = painter();
+    useArtProvider(() => paint.provider);
+
+    const id = newCaseId("easy", "art1");
+    await openCaseText(formatCaseId(id));
+    const g = get(game)!;
+    await skinStore.put(
+      formatCaseId(id),
+      skinFor(g.case.frame.plan.rooms.length, g.case.frame.slots, g.case.frame.people),
+    );
+    game.set(null);
+    updateSettings({ imageQuality: "fast" });
+    storeKey(FAKE_KEY);
+
+    // Overlapping on purpose: the second open starts while the first one's
+    // art run is still loading its modules.
+    const first = openCaseText(formatCaseId(id));
+    const second = openCaseText(formatCaseId(id));
+    await Promise.all([first, second]);
+    await paint.settled(() => paint.calls.length > 0);
+
+    // One run, parked on its first picture. Two would mean both survived.
+    expect(paint.calls).toHaveLength(1);
+  });
+
   it("does not spend a penny without a key", async () => {
     const paint = painter();
     useArtProvider(() => paint.provider);

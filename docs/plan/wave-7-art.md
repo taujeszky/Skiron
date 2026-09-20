@@ -191,3 +191,125 @@ router had never been given the vocabulary for. Wave 7's equivalent number is
 percentage but what the unusable ones have in common. Look at every one of
 them before believing the rate, and run the edge of the range — the biggest
 cast, the oddest setting — rather than the middle.
+
+---
+
+## As built (2026-09-21)
+
+Tasks 1 to 6 and 8 are done and tested, against the stub, with no key and no
+spend — the arrangement waves 5 and 6 used. **Task 7, the twelve-case pack, is
+an owner gate and is where this stops.** `docs/ARCHITECTURE.md` section 13 has
+the design; this records only where the plan above turned out to be wrong.
+
+### Four things the plan had wrong
+
+**1. Task 8 is a subtraction, not an addition.** "Precache the pack's JSON;
+cache its images on first view" describes work that was already done and
+describes the default as its opposite. `files` from `$service-worker` is
+everything under `static/`, so a `.webp` beside a case file joins the install
+payload automatically. The work was taking them *out*, in
+`lib/util/precache.ts`.
+
+That module exists only because `service-worker.ts` imports `$service-worker`
+and so cannot be reached from a test. Without the split, the filter would have
+been guarded by a note asking the next person to read a generated file.
+
+**2. The plan's install-size *starting point* was pessimistic, and my own
+handoff note more so.** The plan guessed "about 3–4 MB of images in total"; my
+handoff said 2.5–5 MB. Neither is a measurement. catalog-art's own numbers —
+560 px WebP at q64, about 7 KB an image — put 84 pictures nearer **600 KB**.
+The real number needs real pictures and is not known yet, but the order of
+magnitude is tens of kilobytes each, not hundreds. Replace this with a
+measurement when the pack is generated; do not carry either guess forward.
+
+**3. `skin.styleGuide` was not unused.** My handoff said all three art fields
+had never been read. `prompts.ts:467` already puts the style guide into the
+summing-up prompt as `STYLE:`, so changing what the writer is asked for there
+moves the detective's closing speech as well as the pictures. `portrait` and
+`scene` genuinely had no readers. (Corrected in the handoff too, in the commit
+that introduced it.)
+
+**4. "Deterministic SVG monograms" is a prop, not a component.** Task 3 reads
+like a new thing to build. `ui/Token.svelte` already drew a person as a
+coloured coin with a letter, and a second avatar component would be a second
+thing to keep in step with the map, the notebook, the cast strip and the chat.
+It gained an `art` prop and `look.ts` gained the initials and the standalone
+SVG.
+
+### What the plan did not say, and should have
+
+**Two structural prohibitions belong in task 5.** "No text, no clocks and no
+readable documents" is the obvious part. The two that a model will breach
+unprompted, and that matter more:
+
+- **A portrait holds exactly one person** — two figures is a claim about who
+  was with whom, which is the whole subject of the game.
+- **The scene holds nobody** — a person at a place is a placement.
+
+**And the corollary about placement rather than content: an image is never
+evidence.** Art goes in the briefing, the cast strip and the conversation
+header. The evidence pane has none, because a picture beside a card would be
+read as saying something and nothing can check what it says.
+
+**The quality setting needed a default, and the plan did not name one.** It is
+`off`. Prose costs ~$0.02 a case and is spent the moment a player types a
+setting; six pictures at the cheapest quality is ~$0.27 for the same gesture.
+Defaulting that on would charge somebody ten times what they agreed to.
+
+### Two bugs the tests found, neither in the plan
+
+**A case could be charged for after the player left it.** `startArt` reaches
+the provider through two dynamic imports after its "is this still the case?"
+check. A player who went back to the desk in that window was still billed.
+
+**And comparing case ids cannot tell a superseded run from the current one**,
+because reopening the same case gives both runs a matching id — so both
+proceed and every picture is bought twice. It is a ticket (`artRun`) now.
+
+A mutation pass caught 9 of 10 planted bugs. The survivor — deleting the second
+ticket check — is recorded in ARCHITECTURE section 13 as a guard no test
+reaches, with the reason it cannot be reached through the public API. It was
+established, not assumed.
+
+### What is still unpaid, and what it buys
+
+**No image has been generated through `llm/gemini.ts#generateImage` by
+anybody.** It remains what its own comment calls it: a draft, written from
+`../catalog-art/api.mjs` and translated from REST to the SDK. Everything above
+it is exercised against `stubProvider`.
+
+`art.live.test.ts` is the two calls that settle it — does the call work, will
+the model draw a face — for about $0.09 rather than for a batch. It is excluded
+from `vitest.config.ts` rather than merely absent from it, because an image
+call costs roughly a hundred times a text call.
+
+`sharp@0.34.4` is a new devDependency, pinned as catalog-art pins it, and
+verified on this machine rather than assumed: 238-byte PNG in, 74-byte WebP
+out on win32-arm64.
+
+### Task 7, and the arithmetic the owner needs
+
+Twelve cases at three per difficulty, cast sizes 4/5/5/6 plus the victim:
+**72 portraits + 12 scenes = 84 pictures**, plus nine cases of writing at about
+$0.02. Measured with `npm run author -- --estimate --art`, not guessed.
+
+| quality | model | per image | 84 images | with the writing |
+| --- | --- | --- | --- | --- |
+| fast | flash-image 1K | $0.045 | $3.78 | ~$3.96 |
+| balanced | flash-image 2K | $0.151 | $12.68 | ~$12.86 |
+| beautiful | pro-image 2K | $0.134 | $11.26 | ~$11.44 |
+
+**The per-image prices are the least certain numbers in the project.** The
+pricing page gives a range without saying which resolution costs which, and
+read literally it makes pro at 2K cheaper than flash at 2K — which is unlikely
+and is the tell that the reading is wrong. Re-read it before the batch.
+
+The levers, which are the owner's to pull and not mine to apply quietly:
+
+- fewer cases — the pack is twelve because the plan says twelve;
+- `--suspects-only`, dropping the victim's portrait: 84 → 72 pictures;
+- `--no-scene`, or one scene per *setting* rather than per case: 84 → 72;
+- `fast` rather than `balanced`, which is the whole factor of three.
+
+`fast` with `--suspects-only` is 60 pictures at $2.70. All four levers are
+built and tested; none is applied by default.

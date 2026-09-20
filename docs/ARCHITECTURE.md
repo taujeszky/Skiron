@@ -1560,3 +1560,203 @@ the card appeared in the evidence pane, the chip beside the reply and the
 card itself quoted the same words, the move counter went from 0/19 to 1/19,
 and the topic picker marked that hour as asked. The two routes are the same
 route, which is what the whole design is for.
+
+## 13. Pictures
+
+Wave 7. Every case can have a face for each person and one view of the place,
+generated from prompts the writer produced in wave 5 and shown in exactly
+three places: the briefing, the cast strip and the header over a conversation.
+
+The whole section can be read off one sentence: **an image cannot be
+fidelity-checked.** Everything else a model produces in this project is
+verified before a player sees it — the writer's prose by a second model
+reading it back to the canonical clue, a suspect's reply by string arithmetic
+in `interrogate/guards.ts`. A picture has no parse-back and never will. Two
+consequences follow, and they are the only two design decisions here that are
+not negotiable.
+
+### What a picture is never asked to say
+
+Since nothing downstream can catch a picture that asserts something false, the
+picture is never asked to assert anything. `art/prompts.ts#FORBIDDEN` is the
+list, in every prompt, placed last where it reads as constraint rather than as
+subject matter — "no blood" early in a prompt is a good way to get blood.
+
+Text is the obvious one. Four others are worth spelling out, because a model
+asked for "a detective game portrait" reaches for them unprompted: clocks
+(which are an hour), readable documents (which are evidence), weapons and
+blood (which are a crime), and expressions of guilt or fear (which are an
+accusation).
+
+Two more are structural rather than a list of nouns, and they are the ones
+most likely to be lost in a later edit:
+
+- **A portrait holds exactly one person.** Two figures in a frame is a claim
+  about who was with whom, which is the entire subject of the game.
+- **The scene holds nobody.** A person shown at a place is a placement, and
+  placements are what the notebook is for.
+
+The corollary is about where art may appear rather than what is in it: **an
+image is never evidence.** A portrait beside a card, or a scene beside a clue,
+would be read as saying something. Art decorates the briefing, the cast strip
+and the conversation header, and the evidence pane has none.
+
+### What an image prompt can reach
+
+`ArtMaterial` is a narrow bridge type, built by the one function that touches a
+`CaseSkin`, in the shape `skin/prompts.ts#writerMaterial` uses and for the same
+reason. It has fields for the style guide, the place, the era and the subjects,
+and no field for `summingUp` — which is the one piece of skin prose that names
+the killer and the hour. A careless interpolation cannot reach it because there
+is nowhere for it to travel.
+
+That is belt to the braces upstream: the portrait prompts were written by call
+A, which has never been told who the culprit is. `prompts.test.ts` asserts the
+consequence anyway — rewrite `summingUp` to name a different person and every
+image prompt must come back byte-identical.
+
+### The rule the wave turns on
+
+**The game never waits on an image.** `startArt` is called from `showGame`,
+after the case is on screen, and is not awaited. That is the exact opposite of
+`dressCase`, which *is* awaited on purpose, and the difference is worth stating
+because both are defensible and only one is right for each:
+
+| | prose | pictures |
+| --- | --- | --- |
+| when | before the case is shown | after |
+| a failure costs | the whole skin | one picture |
+| why | names changing under a player mid-sitting is worse than a longer wait | a face appearing changes nothing already read |
+
+So every failure here is local: a blocked portrait, a timeout, a quota refusal
+each cost one face and the run carries on. Half a cast with faces is fine — the
+others are monograms, which is what every case looked like through wave 6. Half
+a cast with names would not be.
+
+`onImage` fires as each picture lands rather than the run returning a finished
+set, because portraits arrive over tens of seconds while the player is already
+reading the briefing. Portraits are generated before the scene: if a quota runs
+out halfway, it should run out on the decoration.
+
+### The monogram
+
+The fallback, and the normal state rather than an error state: no key, art off,
+a refused picture, or simply the first ten seconds. `ui/look.ts#monogramSvg`
+draws a person as a coloured coin with their initials, deterministically — the
+same three inputs give the same string byte for byte, so the same person is the
+same picture on the briefing, in the cast strip and beside their replies with
+nothing having to cache or agree.
+
+It is a prop on `Token.svelte` rather than a second component, because a
+person's appearance has to stay in step across the map, the notebook, the cast
+strip and the chat, and two components is two things to keep in step. A ghost
+token never takes a portrait: a dashed outline means "could still have been
+here", and a photograph reads as a fact.
+
+The palette is duplicated as hex in `look.ts` beside the `var(--pN)` version.
+That is a real cost, named here so it is not mistaken for an oversight: a CSS
+variable resolves against the document and a standalone SVG has no document.
+The monogram keeps one appearance in both themes, because an `<img>` cannot see
+the theme and a portrait beside it will not change either.
+
+### Where the bytes live
+
+Two sources, and the browser never has to guess which:
+
+- **A shipped case's pictures are files** beside its JSON, at
+  `cases/<pack>/<case id>/<key>.webp`, and `CasePack.images` lists the keys
+  that exist, so nothing probes for a 404 to find out. Keys, not paths — a key
+  becomes a URL, so `pack.ts#imageKeys` validates it against `p<digits>` or
+  `scene` and a pack hand-edited to say `../../secret` loses that entry.
+- **A generated case's pictures are blobs** in IndexedDB, keyed
+  `<case id>:<key>`, so a resumed case does not pay twice.
+
+Adding that second store is where wave 7 nearly walked into a trap with two
+silent jaws, now closed in `llm/idb.ts`: `onupgradeneeded` fires only when the
+version rises, so a store added without a bump is never created for anybody who
+has opened the app before — which is everybody with a saved case and nobody
+running the tests; and `run()` used to hard-code `"skins"` in
+`db.transaction(...)`, so an art call would have read and written skins. Not an
+error, just the wrong data, forever. `DB_VERSION` and `STORES` are adjacent
+lines now.
+
+### Task 8 was a subtraction
+
+The plan says "precache the pack's JSON; cache its images on first view, so the
+install stays light". The default behaviour is the **opposite** and was already
+in effect before a single image existed: `files` from `$service-worker` is
+everything under `static/`, so a `.webp` dropped beside a case file joins the
+install payload automatically. A twelve-case pack would have put its entire set
+of portraits into the first load, before the visitor opened one case.
+
+So the work was removing them, in `lib/util/precache.ts` — a separate module
+only because `service-worker.ts` imports `$service-worker` and therefore cannot
+be reached from a test, which would have left the filter guarded by nothing but
+a note asking the next person to read a generated file.
+
+Two things that check turned up:
+
+- **A string search of `build/service-worker.js` is not evidence.** `ASSETS` is
+  computed at runtime from arrays the bundler inlines, so grepping for a path
+  finds the raw `files` list. It reported the image as precached when it was
+  not. Running the built worker's install handler against a stubbed `caches` is
+  the honest check: 36 assets, four icons, no case pictures, pack JSON present.
+- **The icons were only precached at the root.** `$service-worker` prefixes
+  every entry with the deployment's base path, so comparing the whole path
+  against a fixed set is right on Cloudflare Pages and silently wrong on any
+  sub-path deploy. Nothing would fail; it would just look wrong offline.
+  Matched on the suffix now, and both shapes are tested.
+
+Images are still *cache-first* in the fetch handler even though they are not
+precached: a case's portraits are named after a case id that stands for one
+fixed case, so once fetched there is never a reason to ask again.
+
+### The quality setting, and why it is off
+
+`off`, `fast`, `balanced`, `beautiful`, with the model and resolution derived
+in `models.ts`. **The default is `off`, and that is a decision about somebody's
+money rather than about taste.** Dressing a case in prose costs about $0.02 and
+happens the moment a player types a setting; a cast of five plus a scene at the
+cheapest quality is six images at $0.045, roughly $0.27 — more than ten times
+the writing, for the same single gesture. Turning that on silently would be
+charging somebody an order of magnitude more than they agreed to. A shipped
+pack case is unaffected: its pictures came with it, free.
+
+The per-image prices in `IMAGE_GRADES` are the least certain numbers in the
+project. The pricing page gives flash-image as "$0.045 to $0.151 depending on
+resolution" without saying which resolution costs which, and pro-image as
+"$0.134 per 1K/2K image" — which, read literally, makes pro at 2K cheaper than
+flash at 2K. That is unlikely to be true and is the tell that the reading is
+wrong. `npm run author -- --estimate --art` prints an upper bound and says so.
+
+### What has and has not been paid for
+
+Everything above was built against `stubProvider`, with no key and no calls, as
+waves 5 and 6 were. **No image has been generated through `generateImage` by
+anybody**, and until one has, that function is a draft: written from
+`../catalog-art/api.mjs`, translated from REST to the SDK, never executed. Its
+own comment says so, and `art.live.test.ts` is the two calls that will settle
+it — does it work, will the model draw a face — for about a tenth of a dollar
+rather than for a batch.
+
+`sharp` is verified on this machine rather than assumed: 238-byte PNG in,
+74-byte WebP out on win32-arm64, which was the obvious worry after `workerd`.
+
+### One guard no test reaches
+
+`startArt` takes a ticket (`artRun`) and checks it is still the current run
+after every await. The check *after* the two dynamic imports is not covered by
+any test, and that was established rather than assumed: a mutation run deleted
+it and all ten tests still passed, including the one that looks like it covers
+it. Every route to `showGame` begins with `cancelLoad`, so two overlapping
+opens serialise and the window — two runs both past the abort check, neither
+holding an AbortController yet — cannot be produced through the public API. The
+check stays because it is correct and costs nothing; it is recorded here
+because a test that passes for the wrong reason and is called coverage is the
+exact defect waves 1, 2 and 3 each turned up.
+
+The other nine planted mutants were caught: the game awaiting its pictures, the
+prohibitions dropped from the prompt, a portrait allowed two people, the scene
+generated first, stored pictures bought again, one refusal abandoning the cast,
+a case's pictures joining the install payload, a picture key trusted into a
+URL, and a non-deterministic monogram.

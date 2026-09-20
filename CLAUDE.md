@@ -62,6 +62,10 @@ npm run author -- --dry-run    # the whole authoring pipeline, stubbed, no key
 npm run author -- --cases 3    # the real thing (ask the owner first)
 npm run ask -- --estimate      # what free text costs per question. Makes NO calls.
 npm run ask -- --live          # routing agreement, fallback rate, latency (ask first)
+npm run author -- --estimate --art        # what the pictures would cost. NO calls.
+npm run author -- --dry-run --art         # the whole art path, stubbed, no key
+npm run author -- --art --quality fast    # the real thing (ask the owner first)
+                               # --suspects-only and --no-scene are the size levers
 npm run test:live              # the tests that spend money. Never part of npm test.
 npm run deploy                 # build + wrangler pages deploy (ask first)
 npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/test fail
@@ -161,6 +165,17 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
   it.** The name ends in `.test.ts`, so `npm test`'s include pattern matched the live
   test and made three unintended API calls the first time that file existed. The
   `exclude` line in that config is a spending guard, not tidiness.
+- **A string search of a GENERATED file is not evidence about what it does.**
+  `build/service-worker.js` computes its precache list at runtime from arrays the
+  bundler inlines, so grepping it for a path finds the raw `files` manifest and says
+  nothing about what is cached. Wave 7 read "precaches the webp? true" and believed it
+  for a minute. Run the thing: importing the built worker with a stubbed `self` and
+  `caches` and firing its `install` handler is twenty lines and is the real answer. The
+  same caution applies to any bundled output where a constant is computed rather than
+  written.
+- **A service worker path from `$service-worker` carries the deployment's base path.**
+  Comparing a whole path against a fixed set is correct at the root and silently wrong
+  anywhere else - and nothing fails, it just looks wrong offline. Match on the suffix.
 - vitest sometimes swallows `console.log`; write debug output to a file instead.
 - `../index.html` (the portfolio catalog) has very long lines of embedded art and cannot
   be read whole; read it in slices.
@@ -177,7 +192,7 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 - When the plan turns out to be wrong, change the plan file in the same commit and say
   why.
 
-## State of the project (2026-09-20)
+## State of the project (2026-09-21)
 
 **Waves 0-5 done; wave 6 built and stubbed.** 781 tests green in ~13s, `npm run check`
 at 0/0 over 503 files. The game is playable end to end, offline, and every case can be
@@ -243,7 +258,24 @@ and testimony written as narrated attribution that a speaker would not repeat ve
 All three are in ARCHITECTURE.md section 12 under "What the live run actually found",
 with what each one measured before and after.
 
-Next: wave 7, art.
+- **Wave 7** - the pictures, and everywhere the game does without them. `llm/art/`
+  (prompts, the runner), `llm/artStore.ts` and a shared `llm/idb.ts`, a deterministic
+  monogram in `ui/look.ts` behind `Token.svelte`'s new `art` prop, `--art` on the
+  authoring CLI, and `lib/util/precache.ts`. The rule the wave turns on is that **the
+  game never waits on an image**: `startArt` runs after `showGame` and is not awaited,
+  every failure costs one picture, and every screen renders from the monogram until a
+  blob arrives. An image cannot be fidelity-checked, so the defence is entirely in the
+  prompt - and the two prohibitions worth remembering are structural: one person per
+  portrait, nobody at all in a scene. Art never appears in the evidence pane.
+
+**Wave 7 is built and stubbed, and has spent nothing.** Tasks 1-6 and 8 are done;
+**task 7, the twelve-case pack, is an owner gate**: 84 pictures at $3.78 (`fast`) to
+$12.68 (`balanced`), measured with `npm run author -- --estimate --art`. **No image has
+been generated through `llm/gemini.ts#generateImage` by anybody** - it is still the draft
+its own comment says it is, and `art.live.test.ts` is the two calls that would settle it
+for about $0.09. `sharp@0.34.4` is verified working on win32-arm64 rather than assumed.
+
+Next: the owner's answer on the art batch, then wave 8.
 
 ## How it plays (wave 4's verdict, in template text)
 

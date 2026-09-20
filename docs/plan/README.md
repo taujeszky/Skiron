@@ -358,7 +358,7 @@ docs/                ARCHITECTURE.md (write it as the engine lands), plan/
 | 4 | `wave-4-playable.md` | The whole game with template text, offline | **done** 2026-09-20 (deploy deferred to wave 8 by the owner) |
 | 5 | `wave-5-llm-authoring.md` | Skins, fidelity check, authoring CLI, in-app generation | **done** 2026-09-20 — fallback rate 0% over 23 cases and 888 cards; three-case starter pack shipped |
 | 6 | `wave-6-interrogation.md` | Free-text questioning | **done** 2026-09-20 — 182/182 questions routed as written, 162/162 replies survived the guard, p50 2.6s; three fixes came out of the first live run |
-| 7 | `wave-7-art.md` | Portraits, scene art, starter pack | not started |
+| 7 | `wave-7-art.md` | Portraits, scene art, starter pack | **tasks 1–6, 8 done** 2026-09-21, stubbed — 9/10 planted bugs caught, offline still passes, `.webp` kept out of the install payload (verified by running the built worker). **Task 7, the twelve-case pack, is an owner gate: 84 pictures, $3.78 at `fast` to $12.68 at `balanced`.** No image has been generated through the real API yet |
 | 8 | `wave-8-ship.md` | Tutorial, polish, docs, repo, deploy, catalog | not started |
 | 9 | `wave-9-beyond.md` | Optional: daily case, confrontation, Hungarian, Tauri | not planned in detail |
 
