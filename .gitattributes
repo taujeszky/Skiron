@@ -1,0 +1,16 @@
+# LF in the repository and LF in the working tree, on every machine.
+#
+# Without this, git on Windows checks files out with CRLF (core.autocrlf), and
+# anything that matches a multi-line pattern against a source file breaks the
+# moment git has touched that file — which cost a mutation run here: the first
+# pass worked on freshly written LF files, `git checkout --` restored them as
+# CRLF, and half the patterns silently stopped matching on the second pass.
+#
+# Nothing in the toolchain wants CRLF. It also stops the "LF will be replaced
+# by CRLF" warning on every single `git add`.
+* text=auto eol=lf
+
+# Never touched: binary, whatever the extension table thinks.
+*.png binary
+*.webp binary
+*.ico binary
