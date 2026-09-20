@@ -190,6 +190,7 @@ export function writerSchema(shape: SkinShape, clueIds: readonly ClueId[]): Json
     minItems: count,
     maxItems: count,
   });
+  const unbounded = (items: JsonSchema): JsonSchema => ({ type: "array", items });
 
   return {
     type: "object",
@@ -259,7 +260,28 @@ export function writerSchema(shape: SkinShape, clueIds: readonly ClueId[]): Json
           portrait: line("A prompt for a portrait of them"),
         },
       }),
-      prose: exactly(clueIds.length, {
+      /*
+       * Unbounded, unlike every other array here, and measured rather than
+       * chosen.
+       *
+       * With `minItems`/`maxItems` this request is a 400 `INVALID_ARGUMENT`
+       * once the case has more than about fifty cards — accepted at 50,
+       * refused at 54, on gemini-3.7-flash on 2026-09-20. It is the same
+       * limit the parse-back hit: a bounded array multiplies its item schema,
+       * and this item carries an `enum` of every clue id, so the cost grows
+       * with the square of the case. Expert cases reach 54 cards, so one in
+       * six of them failed outright.
+       *
+       * The other arrays keep their bounds: rooms, hours and people are at
+       * most nine, and "exactly one per room, in order" is the whole contract
+       * between an array and a set of engine ids.
+       *
+       * Nothing is lost. `validateWriterOutput` already checks coverage and
+       * names what is missing — "prose is missing: c14, c23" — which is a
+       * better complaint to hand a retry than a schema refusal, because it
+       * says which ones.
+       */
+      prose: unbounded({
         type: "object",
         additionalProperties: false,
         required: ["id", "text"],
