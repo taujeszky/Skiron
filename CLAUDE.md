@@ -174,10 +174,14 @@ The game is playable end to end, offline, with engine-written sentences.
   `tools/sim.mjs`. 480 generated cases, zero certificate failures, Expert p95 1.05s.
 - **Wave 4** - the game. `game/` (controller, notebook, errors, storage, stats, rating,
   a scripted blind player), `ui/` (17 Svelte components), `service-worker.ts`, and three
-  browser/measurement tools. **The first deploy is an owner gate and has not happened.**
+  browser/measurement tools.
 
-Next: wave 5, LLM skins and the fidelity check. It needs a paid batch of API calls, so
-say how many you expect and ask first.
+**Owner decisions, 2026-09-20.** The **first deploy is deferred to wave 8**, which
+already owns "repo, deploy, catalog" - nothing is published and no Cloudflare project
+exists. And wave 5 is to be **built against stubbed model responses first**, with an
+exact expected call count brought back for approval before any real batch is spent.
+
+Next: wave 5, LLM skins and the fidelity check, offline until the estimate is approved.
 
 ## How it plays (2026-09-20, template text only)
 

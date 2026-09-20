@@ -349,7 +349,7 @@ docs/                ARCHITECTURE.md (write it as the engine lands), plan/
 | 1 | `wave-1-model-and-oracle.md` | Case model, truth simulation, exhaustive solver | **done** 2026-09-19 |
 | 2 | `wave-2-deduction-solver.md` | Tiered solver, grading, explanations, hints | **done** 2026-09-19 |
 | 3 | `wave-3-generator.md` | Fair cases on demand, sim harness | **done** 2026-09-20 |
-| 4 | `wave-4-playable.md` | The whole game with template text, offline | **done** 2026-09-20 (deploy awaits the owner) |
+| 4 | `wave-4-playable.md` | The whole game with template text, offline | **done** 2026-09-20 (deploy deferred to wave 8 by the owner) |
 | 5 | `wave-5-llm-authoring.md` | Skins, fidelity check, authoring CLI, in-app generation | not started |
 | 6 | `wave-6-interrogation.md` | Free-text questioning | not started |
 | 7 | `wave-7-art.md` | Portraits, scene art, starter pack | not started |

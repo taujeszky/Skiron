@@ -220,8 +220,12 @@ the browser plumbing shared in `tools/cdp.mjs`.
   nothing to fetch. The thing that makes it work is that the service worker
   caches `/immutable/` by path as well as by manifest, because the generator's
   Web Worker chunk is not in the manifest — verified against this build.
-- **The first deploy.** Not done: it is an owner gate. The build is ready and
-  `npm run deploy` is wired.
+- **The first deploy.** **Deferred to wave 8 by the owner, asked and answered
+  on 2026-09-20.** Wave 8 already owns "repo, deploy, catalog", and the site
+  would currently go up reading "Suspect C was not in Room 7 at slot 5" with
+  no tutorial on it. The build is ready and `npm run deploy` is wired, so this
+  is a decision about when rather than about whether. Nothing has been
+  published and no Cloudflare project exists.
 - **An honest note on how the game feels.** In CLAUDE.md, under "How it plays".
 
 ### What the next wave should know
