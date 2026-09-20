@@ -123,9 +123,9 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 - When the plan turns out to be wrong, change the plan file in the same commit and say
   why.
 
-## State of the project (2026-09-19)
+## State of the project (2026-09-20)
 
-**Waves 0, 1 and 2 done.** 381 tests green in ~2.5s, `npm run check` at 0/0 over 330 files.
+**Waves 0-3 done.** 415 tests green in ~5s, `npm run check` at 0/0 over 341 files.
 
 - **Wave 0** - toolchain: SvelteKit + Svelte 5 + Vitest + adapter-static, `vite-node` for
   Node tools, generated icons, PWA manifest (no service worker yet - wave 4).
@@ -137,8 +137,11 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
   five tiers under `solver/rules/`, `solve.ts`, `difficulty.ts`, `explain.ts` (a sentence
   for all 17 clue kinds and all 28 rules), `hint.ts` (the three hint branches, the
   notebook, and the Check).
+- **Wave 3** - cases on demand. `generator/` (caseRules, enumerate, lies, select, bank,
+  investigation, generate), `worker/` (protocol, genWorker, genClient) and a real
+  `tools/sim.mjs`. 480 generated cases, zero certificate failures, Expert p95 1.05s.
 
-Next: wave 3, the generator and the sim harness.
+Next: wave 4, the playable game with template text.
 
 Things a later wave will want to know, beyond what ARCHITECTURE.md records:
 
@@ -152,6 +155,14 @@ Things a later wave will want to know, beyond what ARCHITECTURE.md records:
   the player unable to accuse, because a step recorded which pairs it removed but not
   which suspect that cleared - and the tests asked whether hints were true and whether
   they stopped, never whether they got the player anywhere. See ARCHITECTURE.md section 8.
+- **Two numbers, not one.** A case carries `tier` (the grade of the proof set) and
+  `playTier` (the grade of everything the bank can release). A player who asks everybody
+  everything faces the second, and before it was guarded, 16 of 16 cases were solvable at
+  tier 0 by searching rooms and never asking a question. `playTier` is what the UI should
+  show. See ARCHITECTURE.md section 9.
+- **`npm run sim` is how generator numbers get chosen**, and it prints a rejection table
+  as well as a tier spread - if a preset is being thrown back a lot, that table says why.
+  `--cases N`, `--preset NAME` and `--strict` are the flags.
 - **The habit worth keeping**: after a wave, plant deliberate bugs and check the suite
   notices. That is what found both the hypothesis-depth gap and the untested chokepoints
   in `state.ts`. A surviving mutant is either a missing test or an equivalent mutant, and

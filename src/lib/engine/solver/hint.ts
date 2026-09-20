@@ -251,8 +251,13 @@ function isNews(
  * examine-a-person action, and "look into Suspect A" with nobody to ask is
  * advice a player cannot follow. Testimony can take the clue's own first
  * topic, because every one of them is something to ask its speaker about.
+ *
+ * Exported because `generator/investigation.ts` files each card under the
+ * action that releases it, and that action has to be the one a hint will
+ * name. A second copy of this rule in the generator would drift, and the
+ * symptom would be a hint pointing at a question the game does not offer.
  */
-function firstTopic(frame: CaseFrame, clue: Clue): TopicKey {
+export function firstTopic(frame: CaseFrame, clue: Clue): TopicKey {
   const keys = clueTopicKeys(frame, clue);
   if (clue.source.kind === "testimony") {
     return keys.length > 0 ? keys[0] : topic.motive;

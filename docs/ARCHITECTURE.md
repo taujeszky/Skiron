@@ -437,4 +437,189 @@ why each preset's band is two tiers wide. Every number in that table is a
 *starting point* to be replaced from the wave-3 sim table; they are written down
 now so the generator has something to aim at, not because they are right.
 
-*(wave 3)* — the generator pipeline and the measured sim table.
+## 9. The generator
+
+```
+buildFloorPlan -> drawCaseRules -> simulateTruth -> enumerateClues
+              -> inventAlibi -> select -> answers -> buildBank -> planInvestigation
+```
+
+Each step is defined by what it is not allowed to know, and two of those
+restrictions are load-bearing enough to have their own headings below.
+
+### The case file is drawn before the evening, not after it
+
+The plan had `enumerate.ts` choose the closures, bars and capacities alongside
+everything else that is true of the world — pick a door nobody happened to use
+and declare it locked. That works, and it leaks the answer. A rule chosen to
+fit the truth is a *function* of the truth, so a player who knew how the
+generator worked could read it backwards: a capacity of two means some room
+really did hold two, a closure means that door really was unused. Drawn first,
+from the floor plan alone, a rule is independent of the evening and says only
+what it says. `simulateTruth` already accepts `rules` on its request and walks
+everybody inside them, so the only cost is that a harsh draw makes the
+simulation retry — measured at 0.04 to 0.11 retries a case, which is nothing.
+
+The price is a new rejection: a rule drawn blind can land on the murder room
+and clear everybody who could not have been there. `generate.ts` therefore
+refuses any case whose opening cards solve it outright.
+
+### No card may be the answer
+
+Rule 5 says nobody but the killer is in `r*` from `t*` on. So every true clue
+placing a living suspect there *names the killer*, and a one-slot `DeathWindow`
+names the hour. Left in the pool, those cards end the game before it starts:
+measured over twelve seeds a preset, the selection loop minimised to two or
+three cards and 9 of 12 Easy cases and 5 of 12 Expert cases graded at tier 0,
+because one card was the whole solution. `enumerate.ts#givesAwayAnswer` bans
+them, and with it every preset lands inside its tier band.
+
+The same argument applies to the speaker, not just the statement. A suspect who
+could only have learned something by standing in `r*` at or after `t*` confesses
+by knowing it, so the knowledge model refuses that vantage point. The
+consequence is that the culprit is necessarily silent about the murder hour —
+which is what `bank.ts#spreadGaps` exists to cover up.
+
+### A sample, not everything
+
+The plan said "start from every clue, shuffle, and drop each clue if the solver
+still finishes without it". Measured, the pool is 516 clues on Easy and about
+1,800 on Expert once every speaker who could say a thing is counted, and the
+pass costs one `solve` per clue — around a second per Expert attempt, spent
+proving over and over that the four hundredth `NotAt` was not load-bearing.
+Drawing a weighted sample first and growing it only if it fails to prove the
+case gives the same shipped set for a fifth of the time.
+
+The counter-intuitive part, which decides how the loop is sized: **the
+expensive solves are the refused drops, not the accepted ones.** A solve on a
+set that still proves the case settles at tier 0 in 0.25 ms even with 400
+cards; a solve on a set that no longer does burns the whole hypothesis budget
+before admitting defeat. So the cost is roughly "how many drops were refused",
+and a smaller working set is cheaper twice over.
+
+### Two grades, and why the second one is a rejection
+
+`tier` is the grade of the proof set — the hardest reasoning needed by a player
+holding exactly the cards the proof needs. It is what the hints walk through and
+what the summing-up recites. But nothing stops a player asking everybody
+everything, and the case they then hold is a different, easier one.
+
+That difference is not small. During this wave a bank that released every fact
+filed under a room made **16 of 16 cases solvable at tier 0 by searching rooms
+and never asking a single question** — the suspects, the lies and the whole
+trust tier reduced to scenery. So `playTier` is measured on everything the bank
+can ever release, and a case whose `playTier` falls below the preset floor is
+thrown back. It is a rejection criterion rather than a statistic, because a
+number nobody acts on would not have caught that. The label the player sees is
+`difficultyForTier(playTier)`: the grade they are guaranteed to face however
+thorough they are.
+
+Note the asymmetry behind it. With lying off everyone is trusted from the
+start, so every extra statement is live immediately and volume collapses the
+grade. With lying on nobody's testimony is active until somebody has been
+cleared, so a pile of statements is inert until the facts have done their work.
+Grade leakage is mostly an Easy and Normal problem, and it comes from physical
+evidence rather than from talk.
+
+### The killer's story
+
+A lie can never make a case unfair, and it is worth knowing why: a testimony by
+`s` asserts `s ≠ culprit ⇒ φ`, so in the true world the culprit's own
+statements assert nothing at all. The true answer survives every lie, and a lie
+can only remove other answers. There is therefore no fairness check in
+`lies.ts`.
+
+A lie is also **inert until the solver doubts its teller** — with lying on no
+testimony is active at depth 0, so a lie narrows no cell. It waits for tier 3 to
+suppose the culprit innocent and then falls apart. That gives the two conditions
+a story must meet, and both are measured by solving with `lying` turned off,
+which is exactly what tier 3's branch does to the suspect it supposes innocent:
+the story must not contradict on its own (or tier 3 fires for free and the case
+is graded Hard for nothing), and it must fall to the facts (or tier 3 can never
+fire at all). The second is a necessary condition, not a sufficient one — the
+real branch has only the cards the player has collected — and the sim table
+measures the rest.
+
+The construction is a one-slot detour: the culprit claims a room reachable from
+where they really were and leading to where they really went next. Being
+walkable by construction is what keeps it from contradicting itself. Every
+true statement of the culprit's that the story falsifies is **retracted**, not
+merely outvoted — a killer whose own two cards refute each other hands tier 3 a
+free win. On Expert the story also names an innocent as having been there.
+That cannot mislead a solver, since refuting an innocent's innocence is
+impossible while the rules are sound; what it does is give conflict-pair
+something to bite on, and give the player the red herring the genre is built on.
+
+### The measured table
+
+`npm run sim`, 120 cases per preset, 480 in all, on this machine (win32-arm64,
+node 22.17). **Zero certificate failures**: on every case the exhaustive solver
+returned exactly the true answer, both for the proof set and for the full bank.
+
+```
+preset  made     att  ms p50/p95/max   essential  bank  par  proof tier   play tier
+easy    120/120  1.00    11/   16/  39   4 ( 2- 8)   26   6   0:60 1:60   0:75 1:45
+normal  120/120  1.23    33/   70/  97   6 ( 2-14)   33   8   1:25 2:95   1:40 2:80
+hard    120/120  1.29   113/  263/ 453   9 ( 3-21)   38  11   3:120       2:13 3:107
+expert  120/120  2.14   402/ 1049/1810  10 ( 3-28)   44  12   3:56 4:64   3:89 4:31
+```
+
+Rejections per made case:
+
+```
+preset  mute-culprit  play-tier  tier  unsolvable
+easy            0.00       0.00  0.00        0.00
+normal          0.00       0.14  0.09        0.00
+hard            0.17       0.04  0.06        0.02
+expert          0.70       0.11  0.15        0.18
+```
+
+The exit criterion was a p95 under five seconds in a worker. Expert's p95 is
+1.05 s and its worst case 1.8 s, so there is room to spare.
+
+**What the table changed.** The first run had Expert collapsed into Hard: 69 of
+80 Expert cases graded tier 3, exactly like Hard's 80 of 80, so the two hardest
+presets were the same puzzle with different labels. The plan's risk list
+predicted that shape of failure and named the clue-type mix as the lever. Two
+rounds of tuning:
+
+1. Starve the top presets of cards that *place* somebody. `At`, `AloneIn`,
+   `Saw` and `Stayed` pin a cell outright, and a case made of them is one tier 0
+   can walk; counting and company clues constrain without placing. Expert's
+   tier-4 share went from 14% to 37%.
+2. Starve Expert of cards that pin the *hour*. Tier 4 is usually what settles
+   the slot once tier 3 has found the culprit, so `AliveAt` and `DeathWindow`
+   are what stand between a case and needing it. Expert's tier-4 share went to
+   53%, and the curve flattened after that — 0.05 bought 57% for a higher p95,
+   so 0.1 is the knee and is what is written down.
+
+The mix that fell out of it is a real difficulty gradient rather than just a
+size one: Easy's proof sets are made of `Saw`, `At`, `Stayed` and `AloneIn` —
+cards that say where somebody was — while Expert's lead with `Count` and
+`Together`, which say only how many and with whom.
+
+```
+easy    Saw 24%  At 16%  Stayed 14%  AloneIn 13%  DeathWindow 12%  ...
+normal  Saw 22%  At 12%  AloneIn 12%  Count 11%  Stayed 10%  ...
+hard    Count 16%  Saw 14%  Together 14%  NeverVisited 8%  DeathWindow 8%  ...
+expert  Count 19%  Together 19%  Saw 15%  Stayed 7%  NeverVisited 7%  ...
+```
+
+Every clue kind is essential to some case in the sample, so none is carrying no
+weight — `AliveAt` is thinnest at 1–3% and is worth watching. `Hard` never uses
+the bottom of its band: all 120 cases graded tier 3, because with lying on the
+trust tier almost always has something to say. That is not a fault — Hard *is*
+the lying preset — but it means Hard's floor of 2 is currently decorative.
+
+The dominant rejection is `mute-culprit` on Expert at 0.70 a case: a case that
+graded tier 4 by pure hypothesis without the killer ever having spoken. Tier 3
+cannot fire unless the culprit has said something (`allSpeak`), and a lying
+preset whose killer is silent has no lie in play, so those are thrown back.
+
+### Still a starting point
+
+The preset shapes and tier bands in `difficulty.ts`, the case-file budgets in
+`caseRules.ts`, the filler counts in `bank.ts`, and par's 1.5 multiplier. Par in
+particular is only the plan's guess: fitting it properly means driving `hint.ts`
+with a scripted player, and `hint.ts` solves with no tier cap, so such a player
+reasons at tier 4 even on an Easy case. That is a wave-4 measurement.

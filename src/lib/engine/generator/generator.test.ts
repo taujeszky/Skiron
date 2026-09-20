@@ -1,0 +1,403 @@
+import { describe, expect, it } from "vitest";
+import { clueHolds, holds } from "../clues";
+import { newCaseId } from "../caseId";
+import { answerKey, answers } from "../solver/exhaustive";
+import { PRESET_NAMES, PRESETS, acceptsTier } from "../solver/difficulty";
+import { solve } from "../solver/solve";
+import { isRuleKind, topic } from "../types";
+import type { Clue, PresetName } from "../types";
+import { allCards, ask, examine, murderTopics } from "./bank";
+import { allTrue, couldKnow, distinct, givesAwayAnswer, isOpening } from "./enumerate";
+import { generate } from "./generate";
+import type { GeneratedCase } from "./generate";
+import { isOfferedAction, unreachable } from "./investigation";
+import { falseStatements } from "./lies";
+
+/**
+ * Generating a case is the most expensive thing in the suite — a few hundred
+ * milliseconds on Expert — so every case is made once and shared. A test that
+ * needs a fresh one says so.
+ */
+const SEEDS = ["a1", "b2", "c3", "d4"];
+const cache = new Map<string, GeneratedCase>();
+
+function caseFor(preset: PresetName, seed: string): GeneratedCase {
+  const key = `${preset}:${seed}`;
+  const found = cache.get(key);
+  if (found) return found;
+  const out = generate(newCaseId(preset, seed), {
+    onAssertionFailure: (reason, detail) => {
+      // A certificate failure is a soundness bug, not a flaky seed. Make it
+      // loud here even though the generator itself only counts and retries.
+      throw new Error(`${reason}: ${detail}`);
+    },
+  });
+  expect(out.case, `no case for ${key} in ${out.rejections.length} attempts`)
+    .not.toBeNull();
+  cache.set(key, out.case as GeneratedCase);
+  return out.case as GeneratedCase;
+}
+
+function everyCase(): GeneratedCase[] {
+  return PRESET_NAMES.flatMap((p) => SEEDS.map((s) => caseFor(p, s)));
+}
+
+describe("the generator makes a case at all", () => {
+  it("makes one for every preset, inside the attempt cap", () => {
+    for (const preset of PRESET_NAMES) {
+      const out = generate(newCaseId(preset, "start"));
+      expect(out.case, `${preset} made no case`).not.toBeNull();
+    }
+  });
+
+  it("is deterministic: the same id rebuilds the same case", () => {
+    // Invariant 4, and the reason every draw in the pipeline happens before
+    // the first solve. `golden.test.ts` guards the stronger claim — that the
+    // case does not change between builds — with pinned vectors.
+    for (const preset of PRESET_NAMES) {
+      const id = newCaseId(preset, "twice");
+      const a = generate(id).case;
+      const b = generate(id).case;
+      expect(a).not.toBeNull();
+      expect(signature(a as GeneratedCase)).toBe(signature(b as GeneratedCase));
+    }
+  });
+});
+
+describe("fairness, certified by the oracle (invariant 2)", () => {
+  it("the proof set has exactly the true answer", () => {
+    for (const c of everyCase()) {
+      const found = answers(c.frame, c.clues);
+      expect(found.map(answerKey)).toEqual([answerKey(c.answer)]);
+    }
+  });
+
+  it("the full bank leaves it fair too (invariant 7)", () => {
+    // Bank fairness is the one that matters most, because the bank is what a
+    // thorough player actually ends up holding. The argument is that adding
+    // an issued clue can only shrink the answer set while the true world
+    // witnesses the truth under every one of them — this asks the oracle
+    // rather than trusting the argument.
+    for (const c of everyCase()) {
+      const held = [...c.opening, ...allCards(c.bank)];
+      const found = answers(c.frame, held);
+      expect(found.map(answerKey)).toEqual([answerKey(c.answer)]);
+    }
+  });
+
+  it("the deduction solver finishes on what it shipped, with no contradiction", () => {
+    for (const c of everyCase()) {
+      const r = solve(c.frame, c.clues, { record: false });
+      expect(r.finished).toBe(true);
+      expect(r.contradiction).toBe(false);
+      expect(r.answer).toEqual(c.answer);
+      expect(r.tier).toBe(c.tier);
+    }
+  });
+});
+
+describe("the difficulty the case claims", () => {
+  it("lands inside the band the preset asked for", () => {
+    for (const c of everyCase()) {
+      expect(acceptsTier(PRESETS[c.id.preset], c.tier)).toBe(true);
+    }
+  });
+
+  it("is never beaten by collecting everything", () => {
+    // The guard that stops a case being graded Hard and played as Easy. More
+    // cards can only make a case easier, so playTier <= tier; the generator
+    // additionally refuses anything that falls below the preset floor.
+    for (const c of everyCase()) {
+      expect(c.playTier).toBeLessThanOrEqual(c.tier);
+      expect(c.playTier).toBeGreaterThanOrEqual(PRESETS[c.id.preset].tier.min);
+    }
+  });
+});
+
+describe("honesty (rule 7)", () => {
+  it("every clue the case ships is true in the true world, lies aside", () => {
+    for (const c of everyCase()) {
+      for (const clue of [...c.opening, ...allCards(c.bank)]) {
+        const isLie =
+          clue.source.kind === "testimony" &&
+          clue.source.speaker === c.world.culprit;
+        if (!isLie) {
+          expect(
+            holds(clue.body, c.frame, c.world),
+            `${c.id.preset}: ${clue.id} is not true`,
+          ).toBe(true);
+        }
+        // Whether or not it is a lie, it must hold in the rule-7 sense, which
+        // is what makes a half-collected notebook safe.
+        expect(clueHolds(c.frame, clue, c.world)).toBe(true);
+      }
+    }
+  });
+
+  it("innocents never lie, in either mode", () => {
+    for (const c of everyCase()) {
+      const theirs = allCards(c.bank).filter(
+        (k) =>
+          k.source.kind === "testimony" && k.source.speaker !== c.world.culprit,
+      );
+      expect(falseStatements(c.frame, c.world, theirs)).toEqual([]);
+    }
+  });
+
+  it("with lying off the culprit does not lie either", () => {
+    for (const c of everyCase()) {
+      if (c.frame.lying) continue;
+      expect(c.alibi).toBeNull();
+      expect(falseStatements(c.frame, c.world, allCards(c.bank))).toEqual([]);
+    }
+  });
+
+  it("with lying on, a culprit who has a story tells at least one falsehood", () => {
+    let told = 0;
+    for (const c of everyCase()) {
+      if (!c.frame.lying || !c.alibi) continue;
+      told++;
+      expect(falseStatements(c.frame, c.world, c.alibi.lies).length)
+        .toBeGreaterThan(0);
+      // And the story must not sit beside the culprit's own true statements
+      // that contradict it: those are retracted, not outvoted.
+      const mine = allCards(c.bank).filter(
+        (k) =>
+          k.source.kind === "testimony" && k.source.speaker === c.world.culprit,
+      );
+      for (const k of mine) {
+        expect(c.alibi.retracted.has(k.id)).toBe(false);
+      }
+    }
+    expect(told, "no lying case in the sample actually told a lie").toBeGreaterThan(0);
+  });
+});
+
+describe("what the player is handed at the start", () => {
+  it("is the case file and one death window, and nothing else", () => {
+    for (const c of everyCase()) {
+      expect(isOpening(c.opening)).toBe(true);
+    }
+  });
+
+  it("never solves the case by itself", () => {
+    for (const c of everyCase()) {
+      expect(solve(c.frame, c.opening, { record: false }).finished).toBe(false);
+    }
+  });
+
+  it("holds no essential card that is not a case-file rule", () => {
+    // The plan's test, amended in the same commit: the briefing's death
+    // window is an issued clue and is pinned into the opening, so it is
+    // exempt. Withholding a constraint the fiction states out loud would be
+    // worse than widening the test.
+    for (const c of everyCase()) {
+      const starting = new Set(c.opening.map((k) => k.id));
+      for (const k of c.essential) {
+        expect(starting.has(k.id), `${k.id} is essential and free`).toBe(false);
+      }
+      for (const k of c.opening) {
+        const exempt = isRuleKind(k.body.kind) || k.body.kind === "DeathWindow";
+        expect(exempt).toBe(true);
+      }
+    }
+  });
+});
+
+describe("the investigation", () => {
+  it("releases every essential card through some action", () => {
+    for (const c of everyCase()) {
+      expect(unreachable(c.investigation, c.essential)).toEqual([]);
+    }
+  });
+
+  it("only ever names actions the game offers", () => {
+    for (const c of everyCase()) {
+      for (const a of c.investigation.actions) {
+        expect(isOfferedAction(a), `${JSON.stringify(a)}`).toBe(true);
+      }
+    }
+  });
+
+  it("finds each essential card at the action its own hint would name", () => {
+    // `planInvestigation` files a card under `hint.ts#firstTopic`, which is
+    // the same function branch 3 of a hint calls. If the two ever disagree a
+    // hint would send the player to an action that releases nothing.
+    for (const c of everyCase()) {
+      for (const k of c.essential) {
+        const hit =
+          k.source.kind === "testimony"
+            ? ask(c.bank, k.source.speaker, firstTopicOf(c, k))
+            : examine(c.bank, roomOf(firstTopicOf(c, k)));
+        expect(hit, `${c.id.preset} ${k.id}`).toContain(k.id);
+      }
+    }
+  });
+
+  it("charges par for more than the bare proof", () => {
+    for (const c of everyCase()) {
+      expect(c.investigation.par).toBeGreaterThanOrEqual(
+        c.investigation.actions.length,
+      );
+    }
+  });
+
+  it("traces a proof that is a real part of the solve", () => {
+    for (const c of everyCase()) {
+      const all = new Set(
+        solve(c.frame, c.clues).steps.map((s) => JSON.stringify(s)),
+      );
+      expect(c.trace.length).toBeGreaterThan(0);
+      for (const s of c.trace) expect(all.has(JSON.stringify(s))).toBe(true);
+      // The point of slicing is that it is shorter than reciting everything.
+      expect(c.trace.length).toBeLessThanOrEqual(all.size);
+    }
+  });
+});
+
+describe("the bank", () => {
+  it("holds every essential card", () => {
+    for (const c of everyCase()) {
+      for (const k of c.essential) expect(c.bank.cards.has(k.id)).toBe(true);
+    }
+  });
+
+  it("never lets the killer be the only one with nothing to say", () => {
+    // Rule 7 promises the player that silence proves nothing. The culprit is
+    // forced into silence around the murder — nobody may speak from the
+    // killer's position — so that promise has to be made true by giving the
+    // innocents comparable gaps. A generator that gave only the culprit gaps
+    // would fail here.
+    for (const c of everyCase()) {
+      for (const key of murderTopics(c.frame, c.world)) {
+        const silent: number[] = [];
+        for (let s = 0; s < c.frame.suspects; s++) {
+          if (ask(c.bank, s, key).length === 0) silent.push(s);
+        }
+        if (silent.length === 1) {
+          expect(
+            silent[0],
+            `${c.id.preset}: only the culprit is silent on ${key}`,
+          ).not.toBe(c.world.culprit);
+        }
+      }
+    }
+  });
+
+  it("gives each suspect nothing to say about themselves", () => {
+    // "Tell me about yourself" is the motive question, and `clueTopicKeys`
+    // filters a speaker's own person topic out for exactly that reason.
+    for (const c of everyCase()) {
+      for (let s = 0; s < c.frame.suspects; s++) {
+        expect(ask(c.bank, s, topic.person(s))).toEqual([]);
+      }
+    }
+  });
+});
+
+describe("the pool it all comes from", () => {
+  it("offers nothing false and nothing twice", () => {
+    for (const c of everyCase()) {
+      const honest = allCards(c.bank).filter(
+        (k) =>
+          !(k.source.kind === "testimony" && k.source.speaker === c.world.culprit),
+      );
+      expect(allTrue(c.frame, c.world, honest)).toBe(true);
+      expect(distinct([...c.opening, ...allCards(c.bank)])).toBe(true);
+    }
+  });
+
+  it("offers no card that is the answer on its own", () => {
+    for (const c of everyCase()) {
+      for (const k of allCards(c.bank)) {
+        expect(
+          givesAwayAnswer(c.frame, c.world, k.body),
+          `${c.id.preset}: ${k.id} gives the answer away`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("only lets a suspect say what they were placed to know", () => {
+    for (const c of everyCase()) {
+      for (const k of allCards(c.bank)) {
+        if (k.source.kind !== "testimony") continue;
+        const s = k.source.speaker;
+        if (s === c.world.culprit) continue; // their story is not knowledge
+        expect(
+          couldKnow(c.frame, c.world, s, k.body),
+          `${c.id.preset}: suspect ${s} could not know ${k.id}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("never lets anybody speak from the killer's position", () => {
+    // Nobody but the killer stands in r* from t* on, so a statement resting
+    // on that position would name its own speaker.
+    for (const c of everyCase()) {
+      for (const k of allCards(c.bank)) {
+        if (k.source.kind !== "testimony") continue;
+        const s = k.source.speaker;
+        for (let t = c.world.murderSlot; t < c.frame.slots; t++) {
+          if (c.world.loc[s][t] !== c.frame.murderRoom) continue;
+          // They were there, so this card must not be one of theirs about
+          // anything they could only have seen from there.
+          expect(
+            couldKnow(c.frame, c.world, s, k.body) && s !== c.world.culprit,
+          ).toBe(false);
+        }
+      }
+    }
+  });
+});
+
+describe("the proof set is not padded", () => {
+  it("needs every card it kept, or says how many it did not", () => {
+    // The greedy pass leaves a set minimal for the order it used, which is
+    // not quite irredundance: tier 3 reads the whole clue list when it asks
+    // whether everybody it supposes innocent has spoken, so an earlier drop
+    // can change what a later one is allowed to do. Measured over these
+    // sixteen cases a second pass finds nothing, and that is the honest way
+    // to put it — a claim about these cases, not a theorem.
+    for (const c of everyCase()) {
+      const cap = PRESETS[c.id.preset].tier.max;
+      for (const k of c.essential) {
+        const without = c.clues.filter((x) => x.id !== k.id);
+        expect(
+          solve(c.frame, without, { maxTier: cap, record: false }).finished,
+          `${c.id.preset}: ${k.id} was not needed`,
+        ).toBe(false);
+      }
+    }
+  });
+});
+
+/* ------------------------------------------------------------- helpers */
+
+function signature(c: GeneratedCase): string {
+  return [
+    c.frame.murderRoom,
+    c.world.culprit,
+    c.world.murderSlot,
+    c.tier,
+    c.playTier,
+    c.attempt,
+    c.world.loc.map((row) => row.join("")).join("/"),
+    c.clues.map((k) => `${k.id}:${k.source.kind}`).join(","),
+    allCards(c.bank).map((k) => k.id).join(","),
+    c.investigation.actions.map((a) => `${a.kind}:${a.topic}`).join(","),
+  ].join("|");
+}
+
+function firstTopicOf(c: GeneratedCase, clue: Clue): string {
+  const action = c.investigation.actions.find((a) =>
+    a.releases.includes(clue.id),
+  );
+  expect(action, `no action releases ${clue.id}`).toBeDefined();
+  return (action as { topic: string }).topic;
+}
+
+function roomOf(key: string): number {
+  return Number(key.slice(5));
+}

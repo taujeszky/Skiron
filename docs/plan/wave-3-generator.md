@@ -127,3 +127,154 @@ is 200 of them per pass.
 `newNotebook`, `apply`, `notebookIsSound` (the Check — one bit, compared with the stored
 truth, never through a solver), `hint`, `explainer`, `defaultGlossary`. The `essential`
 list that `hint`'s third branch needs is task 6's output.
+
+---
+
+## As built (2026-09-20)
+
+Done. 415 tests green, `npm run check` 0/0, and `npm run sim` over 480 cases with
+zero certificate failures. The measured table and the reasoning behind each decision
+are in ARCHITECTURE.md §9; this section records only where the tasks above turned out
+to be wrong, as CLAUDE.md requires.
+
+### Task 1 — the case file moved out, and moved earlier
+
+"Case-file rules are chosen here too" cannot be done in `enumerate.ts`, because
+`simulateTruth` takes `rules` on its request and walks everybody inside them. They have
+to exist before the evening does. They are now drawn in **`generator/caseRules.ts`, from
+the floor plan alone**.
+
+That is not merely a plumbing detail. Choosing rules to fit an evening that already
+happened makes each one a function of the truth, and a player who knew the generator
+could read it backwards — a capacity of two means some room really did hold two.
+Drawn blind, a rule leaks nothing. The cost is a new rejection (`opening-solves`): a
+rule drawn blind can bar somebody from the murder room and hand over the culprit, so
+the generator now refuses any case its opening cards solve.
+
+### Task 1 — the pool needs a ban list, and it is the whole ball game
+
+Not in the task at all, and it decides whether the game exists. Rule 5 means any true
+clue placing a living suspect in `r*` from `t*` on *names the killer*. Left in, the
+selection loop minimises to two or three cards: measured over twelve seeds a preset,
+9 of 12 Easy and 5 of 12 Expert cases graded tier 0 off a single card.
+`givesAwayAnswer` bans them. The same argument bans the *vantage point*, so nobody may
+testify to what they could only have seen from the killer's position — which is why
+task 5's gap-spreading is not optional.
+
+### Task 3 — "start from every clue" is unaffordable, and one-sided
+
+Two corrections.
+
+**It is a sample.** The pool is 516 clues on Easy and about 1,800 on Expert once every
+entitled speaker is counted — not the ~200 the task assumes — and a full pass costs
+about a second per Expert attempt. `select.ts` draws a weighted sample, grows it if it
+fails to prove the case, and only then does the greedy drop. Same shipped set, a fifth
+of the time. The per-kind weights in that draw are also where task 10's clue-type mix
+actually gets tuned.
+
+**The retry is one-sided.** The task says "retry if the actual tier misses the request
+by more than the preset allows", implying it can miss either way. It cannot miss
+upward: the loop solves at `preset.tier.max`, so a drop that would push the case past
+the cap simply fails to finish and is refused. The only miss is downward.
+
+Also not in the task: **the opening is never dropped**. The case-file rules and the
+briefing's death window are held by the player whatever the loop decides, so a case
+graded without them would ship easier than it grades. Pinning them costs nothing,
+because the frame already carries the rules.
+
+### Task 4 — "throw in development" breaks invariant 4
+
+The task says to throw in development and discard in production. That makes the case a
+given id rebuilds depend on the build mode, and it hides a soundness bug behind a
+retry. As built, every rejection has a named reason and is always counted and retried;
+`onAssertionFailure` lets the tests and `npm run sim` turn the two that mean *bug* into
+a throw. `answers()` throwing on its node limit is counted separately from `answers()`
+returning the wrong set — the first is a clue set too hard to certify, the second is
+the thing this assertion exists to catch.
+
+### Task 5 — a topic maps to a list, and the bank does not protect the grade
+
+"For every suspect × topic fix the reply" cannot be made to work: a clue carries
+several topic keys, and two of a speaker's statements can share one, so the loser of
+that collision would be unreachable at exactly the topic a hint names. A statement is
+registered under **all** of its keys and asking releases everything filed there.
+
+"Spread gaps across innocents" is not testable as written. It is now a property:
+**on every topic touching the murder, at least two suspects are silent**, so a player
+counting who has nothing to say learns nothing. A generator that gave only the culprit
+gaps fails that test.
+
+And the big one, which the task's "by monotonicity the full bank is still fair" hides:
+bank fairness protects the **answer**, not the **grade**. A bank that released every
+fact filed under a room made 16 of 16 cases solvable at tier 0 by searching rooms and
+never asking a question. `playTier` — the grade of everything the bank can release — is
+therefore a **rejection criterion**, and the label the player is shown comes from it.
+
+### Task 6 — the action mapping already existed
+
+"Map each essential clue to an action" reads as though the mapping were free. It is
+not: `hint.ts#firstTopic` already decides it, and branch 3 of a hint says that topic
+out loud. A second copy would drift and the symptom would be a hint naming an action
+that releases nothing. `firstTopic` is now **exported** and imported by
+`investigation.ts`, which only reports it.
+
+The proof trace is stored as `Step[]` and never as rendered sentences, so wave 5 can
+render it with the skin's glossary rather than with "Suspect A" and "Room 3". It is
+also sliced back from the cuts into the answer set: a grading solve keeps filling in
+the grid after the answer is unique, and a detective does not recite every room they
+crossed off.
+
+### Tests — one of them was false as written
+
+"No essential card is released at the start unless it is a case-file rule" stopped
+being true when the briefing's death window became an issued clue. The README says the
+death window is given at the start, and withholding a constraint the fiction states
+out loud would be worse than widening the test. The test now reads: no essential card
+is in the opening, and the opening holds only rule kinds plus exactly one death
+window (`enumerate.ts#isOpening`).
+
+### Task 2 — what "refuted" means, and what the framing actually does
+
+A lie is **inert in the main run**: with lying on no testimony is active at depth 0, so
+a lie narrows no cell and only bites when tier 3 supposes its teller innocent. So
+"not refuted by any single card" has no meaning until "refuted" is defined. As built it
+is defined by solving with `lying` turned off — which is exactly what tier 3's branch
+does to the suspect it supposes innocent — and the two conditions are: the story must
+not contradict on its own, and it must fall to the facts.
+
+Two things the task gets wrong about consequences. **Replacement is load-bearing**: the
+culprit's own true statements that the story falsifies must be *deleted*, not merely
+joined, or their two cards refute each other and tier 3 wins for free. And the false
+sighting does not "frame an innocent" in any sense a solver can be misled by —
+refuting an innocent's innocence is impossible while the rules are sound. It is a
+player-facing red herring whose only mechanical effect is to give conflict-pair
+something to bite on.
+
+A lie is also, contrary to a plausible reading, able to pin the murder slot: tier 3's
+conclusion clears suspects, and closing suspects closes every hour no surviving pair
+still uses. It is the *grid* a lie leaves alone.
+
+### Task 10 — what the table changed
+
+The first run had **Expert collapsed into Hard** — 69 of 80 Expert cases at tier 3
+against Hard's 80 of 80 — which is the risk the plan's own list predicted, in reverse.
+Two rounds of tuning on the clue-type mix fixed it (ARCHITECTURE.md §9 has both and the
+numbers). Expert now splits 56/64 between tiers 3 and 4.
+
+No clue type is never essential, so none has to be dropped; `AliveAt` is thinnest at
+1–3% and is the one to watch. `Hard` never uses the bottom of its band — all 120 cases
+graded tier 3 — so its floor of 2 is currently decorative. The extension clue types
+(`Moved`, `DoorUsed`, `Heard`, ordering) were **not** added: the existing seventeen
+already produce a real difficulty gradient in the *kind* of reasoning, and nothing in
+the table asks for more.
+
+### Left for later, deliberately
+
+- **Par is still the plan's guess** of essential actions × 1.5. Fitting it means
+  driving `hint.ts` with a scripted player, and `hint.ts` solves with no tier cap, so
+  that player reasons at tier 4 even on Easy. It wants a `maxTier` on `HintInput` and
+  belongs with wave 4, where there is a real player loop to compare against.
+- **`simulate.ts#backwardMasks` was not exported.** `lies.ts` needs no feasibility
+  sweep because a one-slot detour is walkable by construction. If a later wave wants
+  longer stories it will need the sweep, and it should move to a shared module rather
+  than be copied.
