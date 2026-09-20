@@ -136,11 +136,28 @@ export const HOUSE_STYLE = [
   "Painted editorial illustration for a detective game.",
   "Muted, slightly desaturated palette. Soft directional light, deep shadow.",
   "Visible brushwork; not photographic, not cartoon, not 3D render.",
+  // One of seventeen came back as a painting of a framed painting, complete
+  // with a white mount, which looked nothing like the sixteen beside it. The
+  // point of a house style is that cases look like one game.
+  "The image fills the frame edge to edge: no border, no mount, no vignette,",
+  "and never a picture of a picture.",
 ].join(" ");
 
 export const PORTRAIT_FRAMING = [
   "Head and shoulders, three-quarter view, eyes toward the viewer.",
   "Exactly one person in the frame, alone, against a plain dim background.",
+  // The blunt one, and it is here rather than in `FORBIDDEN` because it has
+  // to contradict the subject clause rather than merely add to it. Wave 5's
+  // writer was asked for "a prompt for a portrait of them" with no
+  // constraints, and produced "with an ink-stained ledger under her arm" and
+  // "a heavy ring of iron keys"; the model obeyed those over the
+  // prohibitions, because the subject comes first and is weighted most. The
+  // schema is fixed for cases written from now on, but the prompts already
+  // on disk cannot be, so this has to override them.
+  "Their hands are empty and they hold, carry or wear no object of any kind:",
+  "no book, paper, bag, tool, lamp, key, weapon or watch, whatever the",
+  "description above says. Ignore any object it mentions and show the person",
+  "without it.",
 ].join(" ");
 
 export const SCENE_FRAMING = [

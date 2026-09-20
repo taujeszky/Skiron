@@ -448,8 +448,12 @@ async function paintCase(provider, entry, skin, text = formatCaseId(entry.id)) {
           .map((f) => f.replace(/\.webp$/, ""))
       : [],
   );
+  // `--only` gates what is DRAWN, never what is listed. Letting it filter the
+  // list too made a redraw of two subjects rewrite the pack to claim only
+  // those two, orphaning the other five files — which `shipped.test.ts`
+  // catches, but only after the pack has been written.
   const wanted = (key) => (ONLY.length === 0 ? true : ONLY.includes(key));
-  const written = [...already].filter(wanted).map((key) => ({ key, bytes: 0 }));
+  const written = [...already].map((key) => ({ key, bytes: 0 }));
 
   const run = await generateArt(provider, material, {
     quality: QUALITY,

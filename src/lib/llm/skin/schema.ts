@@ -257,7 +257,21 @@ export function writerSchema(shape: SkinShape, clueIds: readonly ClueId[]): Json
             "Why this person might have wanted the victim dead. Every suspect " +
               "needs a real one. Empty string for the victim.",
           ),
-          portrait: line("A prompt for a portrait of them"),
+          portrait: line(
+            // Wave 7 found this the expensive way. Left as "a prompt for a
+            // portrait of them", the writer produces lines like "a severe
+            // woman ... with an ink-stained ledger under her arm" and "an
+            // elderly man ... with a heavy ring of iron keys" — and the
+            // image model obeys the subject clause over the prohibitions
+            // appended after it, because the subject comes first and is
+            // weighted most. Five of the first seventeen portraits came back
+            // holding something. An object in a portrait is a fact the engine
+            // never asserted, and nothing downstream can catch it.
+            "A prompt for a portrait of them: face, build, hair, clothing and " +
+              "bearing only. Describe the PERSON, never what they hold, carry " +
+              "or stand beside — no books, papers, keys, tools, lamps, weapons " +
+              "or watches. Their hands are empty.",
+          ),
         },
       }),
       /*
