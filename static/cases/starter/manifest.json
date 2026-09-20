@@ -11,9 +11,41 @@
       "images": 6
     },
     {
+      "id": "SK1-E-17wdrqp",
+      "title": "The Carpathian Sleeper",
+      "setting": "a night sleeper train crossing the Carpathians, 1931",
+      "preset": "easy",
+      "fallbacks": 0,
+      "images": 6
+    },
+    {
+      "id": "SK1-E-grnhia",
+      "title": "Static on the Wire",
+      "setting": "a desert radio relay station, 1954",
+      "preset": "easy",
+      "fallbacks": 0,
+      "images": 6
+    },
+    {
       "id": "SK1-H-0",
       "title": "The Cold Light of Midnight",
       "setting": "a mountain observatory snowed in for the season, 1957",
+      "preset": "hard",
+      "fallbacks": 0,
+      "images": 7
+    },
+    {
+      "id": "SK1-H-17wdrqp",
+      "title": "Snowbound at the Berghof",
+      "setting": "a grand alpine hotel closed for the off-season, 1968",
+      "preset": "hard",
+      "fallbacks": 0,
+      "images": 7
+    },
+    {
+      "id": "SK1-H-grnhia",
+      "title": "The Scent of Bitter Nutmeg",
+      "setting": "a canal-side spice warehouse in Amsterdam, 1889",
       "preset": "hard",
       "fallbacks": 0,
       "images": 7
@@ -25,6 +57,46 @@
       "preset": "normal",
       "fallbacks": 0,
       "images": 7
+    },
+    {
+      "id": "SK1-N-17wdrqp",
+      "title": "Carnival of the Drowned",
+      "setting": "a Venetian palazzo during the winter carnival, 1897",
+      "preset": "normal",
+      "fallbacks": 0,
+      "images": 7
+    },
+    {
+      "id": "SK1-N-grnhia",
+      "title": "Blood on the Ice",
+      "setting": "a whaling station on a sub-antarctic island, 1912",
+      "preset": "normal",
+      "fallbacks": 0,
+      "images": 7
+    },
+    {
+      "id": "SK1-X-1eaygiu",
+      "title": "The Valley Scribe's Demise",
+      "setting": "an excavation house in the Valley of the Kings, 1922",
+      "preset": "expert",
+      "fallbacks": 0,
+      "images": 8
+    },
+    {
+      "id": "SK1-X-1oo198z",
+      "title": "A Dram Before Dying",
+      "setting": "a Scottish distillery snowbound at Hogmanay, 1949",
+      "preset": "expert",
+      "fallbacks": 0,
+      "images": 8
+    },
+    {
+      "id": "SK1-X-6ekos5",
+      "title": "The Last Hand on the Delta Queen",
+      "setting": "a riverboat casino on the Mississippi, 1904",
+      "preset": "expert",
+      "fallbacks": 0,
+      "images": 8
     }
   ]
 }

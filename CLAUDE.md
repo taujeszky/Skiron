@@ -268,14 +268,23 @@ with what each one measured before and after.
   prompt - and the two prohibitions worth remembering are structural: one person per
   portrait, nobody at all in a scene. Art never appears in the evidence pane.
 
-**Wave 7 is built and stubbed, and has spent nothing.** Tasks 1-6 and 8 are done;
-**task 7, the twelve-case pack, is an owner gate**: 84 pictures at $3.78 (`fast`) to
-$12.68 (`balanced`), measured with `npm run author -- --estimate --art`. **No image has
-been generated through `llm/gemini.ts#generateImage` by anybody** - it is still the draft
-its own comment says it is, and `art.live.test.ts` is the two calls that would settle it
-for about $0.09. `sharp@0.34.4` is verified working on win32-arm64 rather than assumed.
+**Wave 7's spend, approved at up to $20 and measured at about $6.** The starter pack is
+now **twelve illustrated cases, three at each difficulty**, across twelve settings: 84
+pictures, 1.40 MB of art, 0.27 MB of JSON, and **nothing at all added to the install
+payload** because images are cached on first view rather than precached. 84 of 84
+pictures are usable, 82 of them first time.
 
-Next: the owner's answer on the art batch, then wave 8.
+The one finding worth carrying past this wave: **a prohibition cannot beat a
+description.** Five of the first seventeen portraits came back holding a ledger, a
+notepad or a ring of keys - not invented by the image model, but asked for by the
+*writer's own prompt*, because wave 5's schema said only "A prompt for a portrait of
+them". A list of "do not"s appended after the subject clause loses to it. Fixed where it
+is asked for and contradicted outright for prompts already on disk. That and three other
+findings - 27% of expert-preset seeds actually grade expert, a 54-card case can exceed
+the writer's 90s timeout - are in ARCHITECTURE.md section 13 under "What the paid run
+actually found".
+
+Next: wave 8 - tutorial, polish, docs, repo, deploy, catalog.
 
 ## How it plays (wave 4's verdict, in template text)
 

@@ -108,6 +108,14 @@ const NO_SCENE = argv.includes("--no-scene");
 const ART_ONLY = argv.includes("--art-only");
 const ONLY = all("only");
 const REDRAW = argv.includes("--redraw");
+/**
+ * Which packs `--art-only` touches. Every one of them when empty.
+ *
+ * Without this, redrawing one bad portrait means `--only p4`, which redraws
+ * p4 in all twelve cases — eleven of them fine, and eleven pictures paid for
+ * to fix one. Found by doing exactly that.
+ */
+const CASES = all("case");
 
 if (ART && !IMAGE_QUALITIES.includes(QUALITY)) {
   console.error(`--quality must be one of ${IMAGE_QUALITIES.join(", ")}`);
@@ -499,6 +507,7 @@ async function paintExisting(provider) {
     return;
   }
   for (const file of files.sort()) {
+    if (CASES.length > 0 && !CASES.includes(file.replace(/\.json$/, ""))) continue;
     const raw = JSON.parse(readFileSync(join(OUT, file), "utf8"));
     const pack = decodePack(raw);
     if (!pack) {

@@ -196,10 +196,12 @@ cast, the oddest setting — rather than the middle.
 
 ## As built (2026-09-21)
 
-Tasks 1 to 6 and 8 are done and tested, against the stub, with no key and no
-spend — the arrangement waves 5 and 6 used. **Task 7, the twelve-case pack, is
-an owner gate and is where this stops.** `docs/ARCHITECTURE.md` section 13 has
-the design; this records only where the plan above turned out to be wrong.
+**All eight tasks are done.** Tasks 1-6 and 8 were built against the stub with
+no key and no spend, the arrangement waves 5 and 6 used; task 7's pack was then
+generated with the owner's approval — they were brought the measured arithmetic
+and answered "you can go up to $20", and it came to about $6.
+`docs/ARCHITECTURE.md` section 13 has the design and what the paid run found;
+this records only where the plan above turned out to be wrong.
 
 ### Four things the plan had wrong
 
@@ -214,13 +216,13 @@ That module exists only because `service-worker.ts` imports `$service-worker`
 and so cannot be reached from a test. Without the split, the filter would have
 been guarded by a note asking the next person to read a generated file.
 
-**2. The plan's install-size *starting point* was pessimistic, and my own
-handoff note more so.** The plan guessed "about 3–4 MB of images in total"; my
-handoff said 2.5–5 MB. Neither is a measurement. catalog-art's own numbers —
-560 px WebP at q64, about 7 KB an image — put 84 pictures nearer **600 KB**.
-The real number needs real pictures and is not known yet, but the order of
-magnitude is tens of kilobytes each, not hundreds. Replace this with a
-measurement when the pack is generated; do not carry either guess forward.
+**2. The plan's install-size *starting point* was pessimistic, and so were
+both of my guesses.** The plan said "about 3-4 MB of images in total"; my
+handoff said 2.5-5 MB; extrapolating from catalog-art I then said 600 KB.
+**Measured: 1.40 MB for 84 pictures, averaging 17.1 KB.** And the number that
+actually matters for task 8 is a different one — the install payload gained
+*nothing*, because the images are not precached at all. What the service
+worker installs from the pack is 0.27 MB of JSON.
 
 **3. `skin.styleGuide` was not unused.** My handoff said all three art fields
 had never been read. `prompts.ts:467` already puts the style guide into the
@@ -313,3 +315,24 @@ The levers, which are the owner's to pull and not mine to apply quietly:
 
 `fast` with `--suspects-only` is 60 pictures at $2.70. All four levers are
 built and tested; none is applied by default.
+
+**The owner's answer was "you can go up to $20"** — the third time running
+they have ignored the menu and set a ceiling instead. The batch was run at
+`fast` with every subject, and came to about **$6**, the headroom going on
+redraws and on three Expert cases that had to be thrown away. What that
+bought, and the four things it taught, are in ARCHITECTURE section 13 under
+"What the paid run actually found". The short version:
+
+- **A prohibition cannot beat a description.** Five of the first seventeen
+  portraits held a ledger, a notepad, a notebook or a ring of keys, because
+  the *writer's own prompt* asked for them and the subject clause outweighs a
+  list of "do not"s appended after it. Fixed where it is asked for
+  (`skin/schema.ts`) and contradicted outright for the prompts already
+  written (`PORTRAIT_FRAMING`).
+- **84 of 84 pictures are usable**, 82 of them first time after that fix. Both
+  failures were the same rendering artefact rather than anything about content.
+- **27% of expert-preset seeds actually grade expert**, so a pack that wants
+  three Expert cases has to search for them. The first three all graded Hard
+  and were discarded.
+- **A 54-card Expert case can exceed the writer's 90-second timeout.** One
+  did, came back `cancelled`, and the retry worked.

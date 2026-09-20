@@ -1760,3 +1760,86 @@ prohibitions dropped from the prompt, a portrait allowed two people, the scene
 generated first, stored pictures bought again, one refusal abandoning the cast,
 a case's pictures joining the install payload, a picture key trusted into a
 URL, and a non-deterministic monogram.
+
+### What the paid run actually found
+
+Measured 2026-09-21. Twelve cases, 84 pictures, about **$6 of the $20 the
+owner allowed** — roughly 122 image calls in all, counting the proof shots,
+the redraws and three cases that were generated and then thrown away.
+
+| | |
+| --- | --- |
+| pictures | 84 (72 portraits, 12 scenes) |
+| art on disk | 1.40 MB, average 17.1 KB a picture |
+| pack JSON, which is what is precached | 0.27 MB |
+| fidelity fallback across the nine new cases | 0 of 402 cards |
+
+The install payload did not grow by a single byte of image, which was task
+8's whole point, and the size *starting point* in the plan — "about 3–4 MB"
+— can now be retired: a 512 px portrait is about 17 KB of WebP and a 1024 px
+scene about 39 KB.
+
+**Five of the first seventeen portraits came back holding something.** An
+ink-stained ledger, a ring of iron keys, a notepad, a leather notebook. Not
+the image model inventing props: the writer's own prompts said so, because
+wave 5's schema asked for "A prompt for a portrait of them" with no
+constraints and it obligingly gave each suspect something to hold. The
+prohibition list is appended *after* the subject clause, and the subject
+clause comes first and is weighted most, so it won.
+
+That is the single most important thing this wave learned, and it generalises
+past art: **a prohibition cannot beat a description.** If the thing being
+forbidden is also being asked for by an earlier, more heavily weighted part
+of the prompt, adding another "do not" changes nothing. It has to be fixed
+where it is asked for, or contradicted outright.
+
+So both. `skin/schema.ts` now tells the writer that a portrait prompt
+describes a person — face, build, clothing, bearing — and never what they
+hold, which stops cases written from now on creating the problem. And
+`PORTRAIT_FRAMING` gained a clause that overrides the subject clause in so
+many words ("ignore any object it mentions and show the person without it"),
+because the prompts already written cannot be changed. Five redraws at four
+and a half cents: every object gone, the guard untouched. The same shape as
+wave 6's third fix, where the answer was the prompt rather than a weaker
+check.
+
+**The usable rate, and what the unusable ones had in common.** Before that
+fix, 12 of 17. After it, **82 of 84 first time**, and 84 of 84 after two
+redraws. The number matters less than the pattern: after the fix, neither
+remaining failure was about content. Both were the same rendering artefact —
+a painted canvas edge, one of them a full white mount, so the portrait was a
+picture *of a framed picture* and looked nothing like the sixty-odd beside
+it. The house style says the image fills the frame edge to edge; that cut the
+artefact from 1 in 17 to 1 in 72 rather than removing it, which is about what
+a style instruction can do.
+
+**Three Expert cases were generated, graded Hard, and thrown away.** The
+preset is a request and `difficulty` comes from `playTier`; a sweep of sixty
+expert-preset seeds says **27% actually grade expert**, and the first three
+seeds all missed. Three cases whose id says `X` and which play as Hard are
+exactly the confusion the "How it plays" note already flags, and a shipped
+pack with no Expert case in it would be worse — Expert is the difficulty wave
+6 was built to rescue. So: search the seeds for the grade you want rather
+than trusting the preset. `tools/_findexpert.mjs` did it in one engine-only
+pass, no key and no money.
+
+**One writer call timed out.** A 54-card Expert case hit
+`DEFAULT_TIMEOUT_MS` of 90 seconds and came back as `cancelled`; the run
+reported `written 2/3` and carried on, which is the right behaviour, and the
+retry succeeded. Worth knowing before a larger batch: the timeout is per
+request and the writer's call grows with the card count.
+
+**And one bug of mine in the tool.** `--only`, which restricts a redraw to
+one subject, was filtering what gets *listed* as well as what gets drawn — so
+redrawing two portraits rewrote each pack to claim only those two and
+orphaned the other five files. `shipped.test.ts` catches it, but only after
+the pack is written; looking at the output caught it first. `--case` was
+added in the same pass, because without it "redraw one bad portrait" means
+redrawing that subject in all twelve cases, and eleven of them were fine.
+
+Finally, the art was put through the real app in a browser on a shipped case:
+the briefing showed the scene at 1024×572 and all five cast portraits with
+real decoded pixels, the evidence pane's cast strip showed four more, **the
+evidence card itself showed none**, and the map tokens were still coloured
+letters. That last pair is the invariant holding where it matters: a card is
+text, and a token is a placement claim, so neither may be a photograph.
