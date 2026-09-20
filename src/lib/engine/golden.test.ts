@@ -127,19 +127,53 @@ describe("golden vectors (invariant 4)", () => {
  * Everything between the evening and the finished case is a draw too — the
  * case file, the killer's story, which cards are sampled, the order they are
  * offered to the axe, what the bank pads with — so a change to any of them
- * moves these numbers while leaving the vectors above untouched. The four
- * presets on one seed also happen to land on tiers 0, 2, 3 and 4, so this
- * pins the whole grading range.
+ * moves these numbers while leaving the vectors above untouched.
+ *
+ * **The bank is in the signature as a checksum, and it has to be.** The first
+ * version of this summarised the whole statement bank as `allCards().length`,
+ * which is blind to *who says what*: the function that decides which suspects
+ * are left with nothing to say about the murder only ever edits `bank.said`,
+ * so it could be rewritten from top to bottom, change every conversation in
+ * the game, and leave this file green. A count is not a signature.
+ *
+ * A checksum rather than the digest itself because the digest runs to a few
+ * hundred entries on Expert. This file's question is "did anything change",
+ * and for "what changed" the digest is two lines away in `bankDigest`.
  *
  * IF THIS FAILS: the question is again "did you mean to change what an old
  * case id rebuilds?" — see the note at the top of this file.
  */
+
+/** FNV-1a, so a long digest fits on one line and still notices one edit. */
+function checksum(text: string): string {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < text.length; i++) {
+    h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+/** Who says what, and what each room gives up. */
+function bankDigest(bank: {
+  said: Map<string, string[]>;
+  found: Map<number, string[]>;
+}): string {
+  const said = [...bank.said.entries()]
+    .map(([k, v]) => `${k}=${v.join(".")}`)
+    .sort()
+    .join(" ");
+  const found = [...bank.found.entries()]
+    .map(([k, v]) => `${k}=${v.join(".")}`)
+    .sort()
+    .join(" ");
+  return `${checksum(said)}/${checksum(found)}`;
+}
 describe("golden cases (invariant 4, the whole pipeline)", () => {
   const VECTORS: [string, string][] = [
-    ["SK1-E-3f9k2a", "a0 t0/0 c2 s3 r4 | 11232/11212/22144/14111/21444 | c497,c510,c602 | bank 25 par 5 acts 3"],
-    ["SK1-N-3f9k2a", "a0 t2/2 c2 s4 r1 | 333445/222422/244311/242133/242122/551111 | c68,c457,c572,c726,c876,c918,c939,c950 | bank 35 par 12 acts 8"],
-    ["SK1-H-3f9k2a", "a0 t3/3 c3 s1 r2 | 2110036/2543344/5454440/2222555/1000333/2222222 | c75,c996,c1026,c1058,c1066,c1116,c1185,c1217 | bank 37 par 9 acts 6"],
-    ["SK1-X-3f9k2a", "a0 t4/4 c2 s5 r4 | 30003313/22222222/33330400/11111131/26300031/66363666/30044444 | c88,c697,c718,c1379,c1388,c1588,c1595,c1637,c1651,c1710,c1715,c1719,c1727,c1756,c1782,c1804,c1927,c1946 | bank 52 par 21 acts 14"],
+    ["SK1-E-3f9k2a", "a2 t1/1 c1 s2 r0 | 32312/41014/12111/41144/40000 | c428,c439,c487,c494,c585 | bank 27 par 8 acts 5 says 53931164/4bdf6b4d"],
+    ["SK1-N-3f9k2a", "a0 t2/2 c2 s4 r1 | 333445/222422/244311/242133/242122/551111 | c68,c572,c710,c885,c922,c959,c971 | bank 34 par 9 acts 6 says 0674cb45/ff81bf7b"],
+    ["SK1-H-3f9k2a", "a1 t3/3 c0 s5 r3 | 3303236/2333365/2542224/6552322/3652252/3003333 | c434,c1188,c1398 | bank 32 par 5 acts 3 says acd1f80a/ad48d32e"],
+    ["SK1-X-3f9k2a", "a0 t4/4 c2 s5 r4 | 30003313/22222222/33330400/11111131/26300031/66363666/30044444 | c244,c900,c1388,c1550,c1629,c1695,c1710,c1715,c1753,c1782,c1804,c1854,c1946 | bank 47 par 17 acts 11 says f00f1df5/ae7864ea"],
   ];
 
   for (const [text, want] of VECTORS) {
@@ -155,7 +189,7 @@ describe("golden cases (invariant 4, the whole pipeline)", () => {
         c.world.loc.map((row) => row.join("")).join("/"),
         c.essential.map((k) => k.id).join(","),
         `bank ${allCards(c.bank).length} par ${c.investigation.par} ` +
-          `acts ${c.investigation.actions.length}`,
+          `acts ${c.investigation.actions.length} says ${bankDigest(c.bank)}`,
       ].join(" | ");
       expect(got).toBe(want);
     });

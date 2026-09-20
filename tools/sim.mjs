@@ -10,12 +10,15 @@
  *   npm run sim -- --cases 50    fewer, for a quick look
  *   npm run sim -- --preset hard one preset only
  *   npm run sim -- --strict      throw on a failed certificate
+ *   npm run sim -- --scale 3     try a different draw size before writing it
+ *                                into PRESET_TUNING
  */
 import { generate, BUG_REJECTIONS } from "$lib/engine/generator/generate";
 import { allCards } from "$lib/engine/generator/bank";
 import { newCaseId } from "$lib/engine/caseId";
 import { PRESET_NAMES, PRESETS } from "$lib/engine/solver/difficulty";
 import { solve } from "$lib/engine/solver/solve";
+import { redundantCount } from "$lib/engine/generator/select";
 
 /* ------------------------------------------------------------- arguments */
 
@@ -27,6 +30,7 @@ const flag = (name, fallback) => {
 const CASES = Number(flag("cases", 300));
 const ONLY = flag("preset", null);
 const STRICT = argv.includes("--strict");
+const SCALE = flag("scale", null);
 const names = ONLY ? [ONLY] : PRESET_NAMES;
 
 /* --------------------------------------------------------------- helpers */
@@ -65,6 +69,8 @@ for (const name of names) {
     rejections: new Map(),
     lying: 0,
     framed: 0,
+    lieShipped: 0,
+    redundant: [],
     culpritCards: [],
     failed: 0,
     bugs: 0,
@@ -74,6 +80,7 @@ for (const name of names) {
     const id = newCaseId(name, seedOf(i));
     const t0 = process.hrtime.bigint();
     const out = generate(id, {
+      select: SCALE === null ? undefined : { scale: Number(SCALE) },
       onAssertionFailure: (reason, detail) => {
         rows.bugs++;
         if (STRICT) throw new Error(`${reason}: ${detail}`);
@@ -104,7 +111,16 @@ for (const name of names) {
     if (c.alibi) {
       rows.lying++;
       if (c.alibi.framed !== null) rows.framed++;
+      const lies = new Set(c.alibi.lies.map((k) => k.id));
+      if (c.essential.some((k) => lies.has(k.id))) rows.lieShipped++;
     }
+    // How much the greedy pass left behind. It is minimal for the order it
+    // used, which is not quite irredundant: tier 3 reads the whole clue list
+    // when it asks whether everybody it supposes innocent has spoken, so an
+    // earlier drop can change what a later one may do.
+    rows.redundant.push(
+      redundantCount(c.frame, c.opening, c.essential, preset.tier.max),
+    );
     rows.culpritCards.push(
       c.essential.filter(
         (k) => k.source.kind === "testimony" && k.source.speaker === c.world.culprit,
@@ -175,9 +191,10 @@ for (const { name, preset, rows } of table) {
       `sim-retries/case ${mean(rows.simRetries).toFixed(2)}  ` +
       `trialNodes p50 ${pct(rows.trialNodes, 0.5)} p95 ${pct(rows.trialNodes, 0.95)}  ` +
       `opening ${pct(rows.opening, 0.5)} cards  ` +
+      `redundant/case ${mean(rows.redundant).toFixed(2)}  ` +
       (preset.lying
         ? `alibi ${((100 * rows.lying) / made).toFixed(0)}% ` +
-          `(framed ${((100 * rows.framed) / made).toFixed(0)}%) ` +
+          `(lie shipped ${((100 * rows.lieShipped) / made).toFixed(0)}%) ` +
           `culprit cards p50 ${pct(rows.culpritCards, 0.5)}  `
         : "") +
       `unmade ${rows.failed}  ` +

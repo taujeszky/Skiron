@@ -467,12 +467,38 @@ refuses any case whose opening cards solve it outright.
 ### No card may be the answer
 
 Rule 5 says nobody but the killer is in `r*` from `t*` on. So every true clue
-placing a living suspect there *names the killer*, and a one-slot `DeathWindow`
-names the hour. Left in the pool, those cards end the game before it starts:
-measured over twelve seeds a preset, the selection loop minimised to two or
-three cards and 9 of 12 Easy cases and 5 of 12 Expert cases graded at tier 0,
-because one card was the whole solution. `enumerate.ts#givesAwayAnswer` bans
-them, and with it every preset lands inside its tier band.
+placing a living suspect there *names the killer*. `enumerate.ts#givesAwayAnswer`
+bans those, and the ban is the single most load-bearing filter in the wave.
+
+Measured by commenting out the `givesAwayAnswer` line in `enumerateClues`,
+generating 60 cases a preset, and then classifying every shipped card with that
+same predicate — so the number is "what would have gone out", not a proxy for it:
+
+```
+preset  proof set holds a giveaway   bank holds one   essential p50
+easy    44/60  (73%)                 49/60  (82%)     3   (5 with the ban)
+normal  27/60  (45%)                 34/60  (57%)     6
+hard    23/60  (38%)                 28/60  (47%)     7
+expert  16/60  (27%)                 17/60  (28%)     8
+```
+
+So without it, between a quarter and three quarters of cases ship holding a
+card that *is* the answer. An earlier version of this section justified the ban
+by the tier spread instead — "9 of 12 Easy and 5 of 12 Expert graded at tier 0"
+— and an adversarial review could not reproduce the Expert half of that and was
+right not to. The tier is the wrong measure: a case can grade tier 3 and still
+contain a card naming the killer, because the grade describes the reasoning the
+clue set *supports*, not the shortest way through it. "Does a card name the
+killer" is the question, and by that measure the ban earns its place on every
+preset.
+
+**The hour needs the same argument, and a sharper test than it first had.** The
+player holds the briefing's death window from the first second, so a card is a
+giveaway when what it leaves *against that window* is a single slot — not
+merely when it names one slot by itself. `DeathWindow(0, 1)` read against a
+briefing of `[1, T-2]` pins `t*` exactly as loudly as `DeathWindow(1, 1)` does,
+and so does `AliveAt(T-3)`. The first version tested `a === b` and shipped 19
+hour-pinning cards in 60 Easy banks.
 
 The same argument applies to the speaker, not just the statement. A suspect who
 could only have learned something by standing in `r*` at or after `t*` confesses
@@ -560,29 +586,36 @@ returned exactly the true answer, both for the proof set and for the full bank.
 
 ```
 preset  made     att  ms p50/p95/max   essential  bank  par  proof tier   play tier
-easy    120/120  1.00    11/   16/  39   4 ( 2- 8)   26   6   0:60 1:60   0:75 1:45
-normal  120/120  1.23    33/   70/  97   6 ( 2-14)   33   8   1:25 2:95   1:40 2:80
-hard    120/120  1.29   113/  263/ 453   9 ( 3-21)   38  11   3:120       2:13 3:107
-expert  120/120  2.14   402/ 1049/1810  10 ( 3-28)   44  12   3:56 4:64   3:89 4:31
+easy    120/120  1.85    12/  43/  76   5 ( 3- 8)   27    6   0:27 1:93   0:35 1:85
+normal  120/120  1.19    33/  64/  96   6 ( 3-17)   33    8   1:25 2:95   1:38 2:82
+hard    120/120  1.30   122/ 222/ 375   8 ( 3-27)   37   11   3:120      2:11 3:109
+expert  120/120  1.76   279/ 818/1009   9 ( 3-22)   43   12   3:56 4:64   3:90 4:30
 ```
 
 Rejections per made case:
 
 ```
-preset  mute-culprit  play-tier  tier  unsolvable
-easy            0.00       0.00  0.00        0.00
-normal          0.00       0.14  0.09        0.00
-hard            0.17       0.04  0.06        0.02
-expert          0.70       0.11  0.15        0.18
+preset  legible-gap  mute-culprit  play-tier  tier  unsolvable
+easy           0.59          0.00       0.00  0.00        0.26
+normal         0.02          0.00       0.06  0.07        0.04
+hard           0.02          0.17       0.05  0.03        0.03
+expert         0.00          0.48       0.08  0.06        0.13
 ```
 
 The exit criterion was a p95 under five seconds in a worker. Expert's p95 is
-1.05 s and its worst case 1.8 s, so there is room to spare.
+0.8 s and its worst case 1.0 s, so there is room to spare.
+
+**The proof sets are irredundant, measured rather than assumed.** `select.ts`
+only claims its greedy pass is minimal *for the order it used*, because tier 3
+reads the whole clue list when it asks whether everybody it supposes innocent
+has spoken, so an earlier drop can change what a later one may do. A second
+pass over all 480 cases found **0.00 removable cards per case** on every
+preset. It is still not a theorem, but it is no longer a worry either.
 
 **What the table changed.** The first run had Expert collapsed into Hard: 69 of
 80 Expert cases graded tier 3, exactly like Hard's 80 of 80, so the two hardest
 presets were the same puzzle with different labels. The plan's risk list
-predicted that shape of failure and named the clue-type mix as the lever. Two
+predicted that shape of failure and named the clue-type mix as the lever. Three
 rounds of tuning:
 
 1. Starve the top presets of cards that *place* somebody. `At`, `AloneIn`,
@@ -594,29 +627,102 @@ rounds of tuning:
    are what stand between a case and needing it. Expert's tier-4 share went to
    53%, and the curve flattened after that — 0.05 bought 57% for a higher p95,
    so 0.1 is the knee and is what is written down.
+3. Give Hard the false sighting too. The plan reserved it for Expert as a
+   starting point, and the measurement overruled that: with one lie card the
+   killer's story survived selection in 6 of 44 Hard cases, and with the
+   sighting as well, in 24 of 46. The second card is what makes the story
+   load-bearing, because it is what gives conflict-pair something to bite on.
 
 The mix that fell out of it is a real difficulty gradient rather than just a
-size one: Easy's proof sets are made of `Saw`, `At`, `Stayed` and `AloneIn` —
-cards that say where somebody was — while Expert's lead with `Count` and
-`Together`, which say only how many and with whom.
+size one: Easy's proof sets are made of `Saw`, `AloneIn` and `At` — cards that
+say where somebody was — while Expert's lead with `Count` and `Together`, which
+say only how many and with whom.
 
 ```
-easy    Saw 24%  At 16%  Stayed 14%  AloneIn 13%  DeathWindow 12%  ...
-normal  Saw 22%  At 12%  AloneIn 12%  Count 11%  Stayed 10%  ...
-hard    Count 16%  Saw 14%  Together 14%  NeverVisited 8%  DeathWindow 8%  ...
-expert  Count 19%  Together 19%  Saw 15%  Stayed 7%  NeverVisited 7%  ...
+easy    Saw 22%  AloneIn 19%  At 19%  Stayed 10%  NeverVisited 10%  ...
+normal  Saw 22%  At 12%  Count 12%  AloneIn 12%  Stayed 10%  ...
+hard    Count 17%  Saw 16%  Together 14%  DeathWindow 9%  AloneIn 7%  ...
+expert  Count 18%  Together 16%  Saw 16%  Stayed 8%  At 7%  ...
 ```
 
 Every clue kind is essential to some case in the sample, so none is carrying no
-weight — `AliveAt` is thinnest at 1–3% and is worth watching. `Hard` never uses
-the bottom of its band: all 120 cases graded tier 3, because with lying on the
-trust tier almost always has something to say. That is not a fault — Hard *is*
-the lying preset — but it means Hard's floor of 2 is currently decorative.
+weight — `AliveAt` is thinnest at 1–2% and is the one to watch. `Hard` never
+uses the bottom of its band: all 120 cases graded tier 3, because with lying on
+the trust tier almost always has something to say. That is not a fault — Hard
+*is* the lying preset — but it means Hard's floor of 2 is currently decorative.
 
-The dominant rejection is `mute-culprit` on Expert at 0.70 a case: a case that
-graded tier 4 by pure hypothesis without the killer ever having spoken. Tier 3
-cannot fire unless the culprit has said something (`allSpeak`), and a lying
-preset whose killer is silent has no lie in play, so those are thrown back.
+The killer's story now reaches the shipped proof set in **33% of Hard cases and
+45% of Expert**, against 2% and 20% before the tuning. The dominant rejection on
+Expert is still `mute-culprit` at 0.48 a case — a case that graded tier 4 by
+pure hypothesis without the killer ever having spoken — and on Easy it is
+`legible-gap` at 0.59, which is the placement leak below being caught and
+thrown back rather than shipped.
+
+### What the adversarial review found
+
+Waves 1 and 2 were each reviewed adversarially when they were finished, and
+both earned their keep. Wave 3's review ran eight independent lenses —
+soundness, determinism, information leaks, the knowledge model, grade
+integrity, playability, mutation testing and conformance — with every finding
+sent to two skeptics told to refute it. Twenty-four survived, collapsing to
+eleven distinct defects. Four are worth recording here; the rest are in the
+plan file.
+
+**The bank could name the killer, twice over, and both were measured in
+percent rather than argued about.** The generator has to keep rule 7's promise
+that silence proves nothing, because the killer is the one person who may not
+speak from the murder room. The code that did that was a best effort which
+reported nothing when it failed, so nothing downstream could act on it: **1.3%
+of Easy and Normal cases shipped with the killer as the only suspect with
+nothing to say about the murder hour.** A case you win by asking four people
+one question.
+
+The second face of it was far larger and nobody had thought of it at all. No
+card can ever *place* the culprit at `t*` — the only true one would name them —
+so if every other suspect has a card placing them at the murder hour, the blank
+row is the answer. That was **47% of Easy cases and 9% of Normal**. Lying
+presets barely felt it, and the reason is worth keeping: the killer's false
+alibi is itself a card placing them at the murder hour, which is what an alibi
+is for.
+
+Both are now closed the honest way round — by giving the killer something to
+say and someone else to be unaccounted-for with, rather than by gagging
+innocents — and, more to the point, both are now *checked* by functions that
+are deliberately not the fixers, with `generate.ts` throwing the case back.
+
+**Two certificates could not fire.** `unreachable(investigation, essential)`
+built its action list by walking `essential` and then asked whether that list
+contained `essential`; it returned "all reachable" for any bank at all,
+including one that filed nothing. And three tests that looked like they guarded
+the giveaway ban and the knowledge model asserted `givesAwayAnswer(...) ===
+false` and `couldKnow(...) === true` over cards those same functions had just
+filtered — so any weakening of either satisfied its own test. The first now
+asks the bank; the second now asks the solver.
+
+**The golden vectors were blind to the bank.** They summarised the whole
+statement bank as `allCards().length`, so the function that decides which
+suspects are left with nothing to say could be rewritten from top to bottom,
+change every conversation in the game, and leave the file green. A count is not
+a signature; the vectors now carry a checksum of who says what.
+
+**Two of the three probes in `lies.ts` could not fail.** One was logically
+subsumed by another; the other asked that the story "fall to the facts", and it
+always did, because `NotAt(culprit, t*, room)` is in the pool by construction
+and flatly contradicts `At(culprit, t*, room)`. That is worth knowing for its
+own sake: the plan's requirement that a lie be "not refuted by any single card"
+is **unachievable in this clue language**, since every positional claim has its
+own direct denial. What stands between the player and the answer is not the
+scarcity of the refutation but having to hold both cards and make a trust
+argument from them.
+
+The pattern across all four is the one wave 2 found as well, and it is worth
+saying plainly because it will recur: **the property was usually already
+asserted somewhere, and the assertion was the thing that was broken.** A test
+that calls the function under test to decide whether the function under test
+was applied, a certificate derived from the thing it certifies, a signature
+that summarises what it is meant to watch — each looks like coverage and is
+not. The silence property even had a correct test, over sixteen cases, against
+an event that happens 1.3% of the time.
 
 ### Still a starting point
 

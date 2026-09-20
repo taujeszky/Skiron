@@ -34,12 +34,49 @@
  * **Gaps, and the silence that would give the killer away.** A suspect may
  * only say what they could have witnessed, and the one position nobody may
  * speak from is the killer's: `r*` from `t*` on (`enumerate.ts#speakable`).
- * So the culprit is necessarily quiet about the murder hour, and with lying
- * off — where they have no false alibi to offer instead — being the only
- * person with nothing to say about nine o'clock would name them outright.
+ * So the culprit has little to say about the murder hour, and being the only
+ * person with nothing to say about nine o'clock would name them outright —
+ * with lying off especially, where they have no false alibi to offer instead.
  * Rule 7 promises the player that silence proves nothing, and that promise
- * has to be made true rather than merely printed. `spreadGaps` does it: on
- * every topic touching the murder, at least two suspects are silent.
+ * has to be made true rather than merely printed.
+ *
+ * The property is **the set of suspects silent on a murder topic is never
+ * exactly the culprit**, and `coverTheKiller` reaches it the honest way round:
+ * by giving the culprit something to say, not by gagging an innocent. There is
+ * almost always something — a suspect may always state their own whereabouts,
+ * so `NotAt(culprit, t*, somewhere)` is available even from the murder room —
+ * and a voice leaks nothing, where a forced silence does. Gagging an innocent
+ * is only the fallback.
+ *
+ * It said "at least two suspects are silent" before, and that was wrong twice
+ * over. It could not always be reached, and it failed *quietly*: measured over
+ * 150 seeds a preset, 1.3% of Easy and Normal cases shipped with the killer as
+ * the only suspect with nothing to say about the murder hour — a case you win
+ * by asking four people one question. And forcing two silences on the murder
+ * hours while leaving every earlier hour alone is itself a signal: counting
+ * silences per hour would have raised a lower bound on `t*`. The narrower
+ * property has neither fault.
+ *
+ * **The same leak has a second face: not who speaks, but who is placed.** No
+ * card can ever put the culprit in a room at `t*` — the only true one would
+ * be `At(culprit, t*, r*)`, which names the killer and is banned — so if
+ * every *other* suspect has a card placing them at the murder hour, the blank
+ * row is the answer. Measured before it was fixed: **47% of Easy cases and 9%
+ * of Normal**, which is not a leak but a solution. Lying presets barely feel
+ * it (0.7%), and for a good reason — the killer's false alibi is itself a
+ * card placing them at `t*`, which is what an alibi is.
+ *
+ * `hideAnInnocent` closes it by withholding a placing card from somebody who
+ * did not need it. That is safe in a way that withholding cards usually is
+ * not: it never touches a card the proof needs, so the bank still contains
+ * `essential`, and a superset of a set that pins the answer pins the answer.
+ *
+ * **The checks are deliberately not the fixers.** `silenceLeaks` and
+ * `placementLeaks` are asked by `generate.ts`, which throws the case back if
+ * either is non-empty. The old code was a best effort that reported nothing,
+ * so a failure to keep rule 7's promise was invisible to everything
+ * downstream — which is exactly how 1.3% of Easy cases came to ship naming
+ * their own killer.
  */
 
 import { clueTopicKeys } from "../clues";
@@ -51,6 +88,7 @@ import type {
   ClueId,
   PersonId,
   RoomId,
+  SlotIndex,
   TopicKey,
   World,
 } from "../types";
@@ -122,7 +160,8 @@ export function buildBank(
     }
   }
 
-  spreadGaps(rng, frame, world, bank, essential);
+  coverTheKiller(rng, frame, world, bank, essential, pool, taken);
+  hideAnInnocent(rng, frame, world, bank, essential);
   return bank;
 }
 
@@ -167,39 +206,201 @@ function push<K>(map: Map<K, ClueId[]>, key: K, id: ClueId): void {
 /**
  * Make sure the killer is never the only one with nothing to say.
  *
- * The topics that matter are the ones that touch the murder: the hours from
- * `t*` on, and the room the body is in. On each of them at least two suspects
- * must be silent, so that a player counting who has no answer learns nothing.
- * An innocent's card may be taken away to achieve that, but never one the
- * proof needs — a silenced essential card is an unsolvable case, which is a
+ * The honest way round: give them a voice. A suspect may always state their
+ * own whereabouts, so there is nearly always a card of the culprit's own —
+ * `NotAt(culprit, t, somewhere)` — filed under the hour in question, and
+ * handing it over leaks nothing. Only when there is no such card does this
+ * fall back to gagging an innocent, and it will never gag one whose card the
+ * proof needs: a silenced essential card is an unsolvable case, which is a
  * far worse failure than a legible one.
+ *
+ * It does its best and does not report. `silenceLeaks` is what decides
+ * whether the best was good enough, and `generate.ts` is what acts on it.
  */
-function spreadGaps(
+function coverTheKiller(
+  rng: RNG,
+  frame: CaseFrame,
+  world: World,
+  bank: Bank,
+  essential: readonly Clue[],
+  pool: readonly Clue[],
+  taken: Set<ClueId>,
+): void {
+  const needed = new Set(essential.map((c) => c.id));
+  for (const key of murderTopics(frame, world)) {
+    if (!lonelyCulprit(frame, world, bank, key)) continue;
+
+    // 1. Something of the killer's own to say about that hour.
+    const mine = pool.filter(
+      (c) =>
+        c.source.kind === "testimony" &&
+        c.source.speaker === world.culprit &&
+        !taken.has(c.id) &&
+        clueTopicKeys(frame, c).includes(key),
+    );
+    const voice = rng.shuffle(mine)[0];
+    if (voice) {
+      file(bank, frame, voice, taken);
+      continue;
+    }
+
+    // 2. Failing that, somebody else with nothing to say either.
+    const speakers: PersonId[] = [];
+    for (let s = 0; s < frame.suspects; s++) {
+      if (s !== world.culprit && ask(bank, s, key).length > 0) speakers.push(s);
+    }
+    for (const s of rng.shuffle(speakers)) {
+      const said = bank.said.get(`${s}|${key}`) ?? [];
+      if (said.some((id) => needed.has(id))) continue;
+      forget(bank, `${s}|${key}`);
+      break;
+    }
+  }
+}
+
+/** Is the culprit the only suspect with nothing to say on this topic? */
+function lonelyCulprit(
+  frame: CaseFrame,
+  world: World,
+  bank: Bank,
+  key: TopicKey,
+): boolean {
+  const silent: PersonId[] = [];
+  for (let s = 0; s < frame.suspects; s++) {
+    if (ask(bank, s, key).length === 0) silent.push(s);
+  }
+  return silent.length === 1 && silent[0] === world.culprit;
+}
+
+/**
+ * Take a reply out of the bank, and take the card with it if that was the
+ * last question which would have released it.
+ *
+ * The second half is not tidiness. `generate.ts` measures both the bank's
+ * fairness certificate and `playTier` — the grade the player is shown — on
+ * `allCards`, and a card no action can produce is not part of what a player
+ * can hold. Leaving orphans there would grade the case on evidence nobody
+ * could ever find.
+ */
+function forget(bank: Bank, key: string): void {
+  const dropped = bank.said.get(key) ?? [];
+  bank.said.delete(key);
+  for (const id of dropped) {
+    let still = false;
+    for (const ids of bank.said.values()) if (ids.includes(id)) still = true;
+    for (const ids of bank.found.values()) if (ids.includes(id)) still = true;
+    if (!still) bank.cards.delete(id);
+  }
+}
+
+/* ------------------------------------------------------------- placement */
+
+/** Does this card put `p` in a named room at slot `t`? */
+function places(body: Clue["body"], p: PersonId, t: SlotIndex): boolean {
+  switch (body.kind) {
+    case "At":
+    case "AloneIn":
+      return body.p === p && body.t === t;
+    case "Saw":
+      return (body.p === p || body.q === p) && body.t === t;
+    case "Stayed":
+      return body.p === p && body.t1 <= t && t <= body.t2;
+    default:
+      return false;
+  }
+}
+
+/** Suspects no card in the bank places at the murder hour. */
+function unplaced(frame: CaseFrame, world: World, bank: Bank): PersonId[] {
+  const cards = [...bank.cards.values()];
+  const out: PersonId[] = [];
+  for (let s = 0; s < frame.suspects; s++) {
+    if (!cards.some((k) => places(k.body, s, world.murderSlot))) out.push(s);
+  }
+  return out;
+}
+
+/**
+ * Leave somebody else's whereabouts at the murder hour unaccounted for.
+ *
+ * The culprit's are unaccounted for whatever happens, so the only way the
+ * blank row stops being an accusation is for it not to be the only one. This
+ * withholds every card that places one innocent at `t*`, choosing an innocent
+ * none of whose placing cards the proof needs.
+ */
+function hideAnInnocent(
   rng: RNG,
   frame: CaseFrame,
   world: World,
   bank: Bank,
   essential: readonly Clue[],
 ): void {
+  if (unplaced(frame, world, bank).length !== 1) return;
+  if (unplaced(frame, world, bank)[0] !== world.culprit) return;
   const needed = new Set(essential.map((c) => c.id));
-  for (const key of murderTopics(frame, world)) {
-    const silent: PersonId[] = [];
-    const speakers: PersonId[] = [];
-    for (let s = 0; s < frame.suspects; s++) {
-      const said = bank.said.get(`${s}|${key}`);
-      if (!said || said.length === 0) silent.push(s);
-      else speakers.push(s);
-    }
-    if (silent.length >= 2) continue;
-    // Silence whoever can be silenced without costing the proof a card.
-    for (const s of rng.shuffle(speakers)) {
-      if (silent.length >= 2) break;
-      const said = bank.said.get(`${s}|${key}`) ?? [];
-      if (said.some((id) => needed.has(id))) continue;
-      bank.said.delete(`${s}|${key}`);
-      silent.push(s);
+  const t = world.murderSlot;
+
+  const candidates: PersonId[] = [];
+  for (let s = 0; s < frame.suspects; s++) {
+    if (s === world.culprit) continue;
+    const placing = [...bank.cards.values()].filter((k) => places(k.body, s, t));
+    if (placing.length > 0 && placing.every((k) => !needed.has(k.id))) {
+      candidates.push(s);
     }
   }
+  for (const s of rng.shuffle(candidates)) {
+    for (const k of [...bank.cards.values()]) {
+      if (places(k.body, s, t)) withdraw(bank, k.id);
+    }
+    if (unplaced(frame, world, bank).length > 1) return;
+  }
+}
+
+/** Take a card out of the bank entirely, wherever it was filed. */
+function withdraw(bank: Bank, id: ClueId): void {
+  for (const [key, ids] of [...bank.said.entries()]) {
+    const left = ids.filter((x) => x !== id);
+    if (left.length === 0) bank.said.delete(key);
+    else if (left.length !== ids.length) bank.said.set(key, left);
+  }
+  for (const [key, ids] of [...bank.found.entries()]) {
+    const left = ids.filter((x) => x !== id);
+    if (left.length === 0) bank.found.delete(key);
+    else if (left.length !== ids.length) bank.found.set(key, left);
+  }
+  bank.cards.delete(id);
+}
+
+/**
+ * Is the killer the only suspect whose whereabouts at the murder hour no card
+ * accounts for? Empty is the only acceptable answer.
+ */
+export function placementLeaks(
+  frame: CaseFrame,
+  world: World,
+  bank: Bank,
+): PersonId[] {
+  const blank = unplaced(frame, world, bank);
+  return blank.length === 1 && blank[0] === world.culprit ? blank : [];
+}
+
+/**
+ * The topics on which the killer's silence would name them.
+ *
+ * Empty is the only acceptable answer, and `generate.ts` throws the case back
+ * otherwise. The check is separate from `coverTheKiller` on purpose: the old
+ * code tried and reported nothing, so a failure to keep rule 7's promise was
+ * invisible to everything downstream — which is exactly how 1.3% of Easy
+ * cases came to ship naming their own killer.
+ */
+export function silenceLeaks(
+  frame: CaseFrame,
+  world: World,
+  bank: Bank,
+): TopicKey[] {
+  return murderTopics(frame, world).filter((key) =>
+    lonelyCulprit(frame, world, bank, key),
+  );
 }
 
 /**

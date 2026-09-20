@@ -58,11 +58,17 @@ import type {
   SlotIndex,
   World,
 } from "../types";
-import { allCards, buildBank } from "./bank";
+import {
+  allCards,
+  buildBank,
+  placementLeaks,
+  reachable,
+  silenceLeaks,
+} from "./bank";
 import type { Bank } from "./bank";
 import { RULE_BUDGETS, drawCaseRules } from "./caseRules";
 import { enumerateClues } from "./enumerate";
-import { planInvestigation, unreachable } from "./investigation";
+import { planInvestigation } from "./investigation";
 import type { Investigation } from "./investigation";
 import { culpritSpeaks, inventAlibi, tellStory } from "./lies";
 import type { Alibi } from "./lies";
@@ -117,7 +123,17 @@ export type Rejection =
   /** THE ORACLE DISAGREED. A soundness bug — see `onAssertionFailure`. */
   | "unfair"
   /** An essential card no action releases. A bug in the bank. */
-  | "unreachable";
+  | "unreachable"
+  /**
+   * The killer would be the only suspect with nothing to say about the
+   * murder hour, so their silence names them (rule 7, and `bank.ts`).
+   */
+  | "legible-silence"
+  /**
+   * The killer would be the only suspect whose whereabouts at the murder hour
+   * no card accounts for, which is the same tell seen from the other side.
+   */
+  | "legible-gap";
 
 /** The two rejections that mean a bug rather than bad luck. */
 export const BUG_REJECTIONS: readonly Rejection[] = ["unfair", "unreachable"];
@@ -237,7 +253,7 @@ function attemptCase(
 
   const alibi = preset.lying
     ? inventAlibi(rng, frame, world, opening, pool, nextId, {
-        frameInnocent: preset.name === "expert",
+        frameInnocent: true,
       })
     : null;
   const told = tellStory(pool, alibi);
@@ -247,6 +263,7 @@ function attemptCase(
     cap: preset.tier.max,
     scale: opts.select?.scale ?? tuning.scale,
     weights: opts.select?.weights ?? tuning.weights,
+    include: alibi?.lies,
   });
   if (typeof chosen === "string") return fail(chosen, simRetries);
   if (!acceptsTier(preset, chosen.tier)) return fail("tier", simRetries);
@@ -291,8 +308,23 @@ function attemptCase(
   const playTier = solve(frame, held, { record: false }).tier;
   if (playTier < preset.tier.min) return fail("play-tier", simRetries);
 
+  // Rule 7's promise, checked rather than attempted. `buildBank` does its
+  // best to give the killer a voice; this asks whether it managed, because a
+  // best effort that reports nothing is a best effort nothing can act on.
+  const legible = silenceLeaks(frame, world, bank);
+  if (legible.length > 0) return fail("legible-silence", simRetries);
+  // The same leak's other face: no card can place the killer at the murder
+  // hour, so if every other suspect has one, the blank row is the answer.
+  if (placementLeaks(frame, world, bank).length > 0) {
+    return fail("legible-gap", simRetries);
+  }
+
   const investigation = planInvestigation(frame, chosen.essential, chosen.steps);
-  const missing = unreachable(investigation, chosen.essential);
+  // Asked of the BANK, which is what actually hands cards over. Asking the
+  // investigation plan would be asking a list built from `essential` whether
+  // it contains `essential`, which it always does — the guard was a tautology
+  // and could not have fired whatever the bank did.
+  const missing = reachable(bank, chosen.essential);
   if (missing.length > 0) {
     opts.onAssertionFailure?.(
       "unreachable",

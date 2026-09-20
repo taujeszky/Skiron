@@ -121,7 +121,7 @@ export function enumerateClues(
   const pool: Clue[] = [];
   for (const body of trueBodies(frame, world)) {
     if (canonical(body) === held) continue;
-    if (givesAwayAnswer(frame, world, body)) continue;
+    if (givesAwayAnswer(frame, world, body, opts.murderSlotRange)) continue;
     if (physical(body.kind)) pool.push(make(body));
     for (let s = 0; s < frame.suspects; s++) {
       if (couldKnow(frame, world, s, body)) pool.push(make(body, s));
@@ -233,6 +233,7 @@ export function givesAwayAnswer(
   frame: CaseFrame,
   world: World,
   body: ClueBody,
+  range: [SlotIndex, SlotIndex],
 ): boolean {
   const V = frame.victim;
   const confesses = (p: PersonId, t: SlotIndex, r: RoomId) =>
@@ -266,7 +267,17 @@ export function givesAwayAnswer(
         !wasThereBefore(world, body.p, body.r, world.murderSlot)
       );
     case "DeathWindow":
-      return body.a === body.b;
+      // NOT `a === b`. The player holds the briefing window from the first
+      // second, so what matters is what a card leaves once it is read
+      // *against* that — and `DeathWindow(0, 1)` against a briefing of
+      // `[1, T-2]` names the hour exactly as loudly as `DeathWindow(1, 1)`
+      // does. Measured before this was fixed: 19 of 60 Easy banks held a card
+      // that pinned `t*` on its own.
+      return Math.max(body.a, range[0]) === Math.min(body.b, range[1]);
+    case "AliveAt":
+      // Same argument from the other end: "still alive at T-3" plus a
+      // briefing that caps `t*` at T-2 leaves one hour standing.
+      return body.t + 1 === range[1];
     default:
       return false;
   }

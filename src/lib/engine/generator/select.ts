@@ -109,6 +109,18 @@ export interface SelectOptions {
   growStep?: number;
   /** How many times to grow before giving up on this attempt. */
   grows?: number;
+  /**
+   * Cards the working set always starts with, on top of the weighted draw.
+   *
+   * The killer's story goes here. It is one `At` card in a pool of two
+   * thousand, so the quota draw picked it about four times in a hundred, and
+   * measured over 60 Hard cases the lie reached the shipped set exactly once.
+   * A preset whose whole identity is "the culprit lies" cannot ship cases in
+   * which the culprit says nothing false. Being in the working set is not a
+   * promise of surviving it — the greedy pass may still find the story
+   * redundant — but it is the difference between being considered and not.
+   */
+  include?: readonly Clue[];
 }
 
 /** Measured over 24 seeds of each preset: see the table in ARCHITECTURE.md. */
@@ -190,7 +202,11 @@ export function select(
   const grows = opts.grows ?? DEFAULT_GROWS;
 
   // Everything random happens here, before the first solve.
-  const drawn = drawSample(rng, frame, pool, weights, scale);
+  const sampled = drawSample(rng, frame, pool, weights, scale);
+  const forced = (opts.include ?? []).filter(
+    (c) => !sampled.some((k) => k.id === c.id),
+  );
+  const drawn = [...forced, ...sampled];
   const taken = new Set(drawn.map((c) => c.id));
   const spare = rng.shuffle(pool.filter((c) => !taken.has(c.id)));
   const order = rng.shuffle([...drawn]);

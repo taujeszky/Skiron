@@ -1,16 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { clueHolds, holds } from "../clues";
+import { clueHolds, clueMentions, holds } from "../clues";
 import { newCaseId } from "../caseId";
 import { answerKey, answers } from "../solver/exhaustive";
 import { PRESET_NAMES, PRESETS, acceptsTier } from "../solver/difficulty";
 import { solve } from "../solver/solve";
 import { isRuleKind, topic } from "../types";
 import type { Clue, PresetName } from "../types";
-import { allCards, ask, examine, murderTopics } from "./bank";
-import { allTrue, couldKnow, distinct, givesAwayAnswer, isOpening } from "./enumerate";
-import { generate } from "./generate";
+import {
+  allCards,
+  ask,
+  examine,
+  murderTopics,
+  placementLeaks,
+  reachable,
+  silenceLeaks,
+} from "./bank";
+import { allTrue, couldKnow, distinct, isOpening } from "./enumerate";
+import { generate, murderRange } from "./generate";
 import type { GeneratedCase } from "./generate";
-import { isOfferedAction, unreachable } from "./investigation";
+import { isOfferedAction } from "./investigation";
 import { apply, hint, newNotebook, notebookIsSound } from "../solver/hint";
 import { bitsOf, fullMask } from "../bits";
 import { falseStatements } from "./lies";
@@ -208,8 +216,13 @@ describe("what the player is handed at the start", () => {
 
 describe("the investigation", () => {
   it("releases every essential card through some action", () => {
+    // Asked of the bank, which is what hands cards over. The old version
+    // asked the investigation plan, whose action list is built by walking
+    // `essential` — so it was asking a list made from the essential cards
+    // whether it held the essential cards, and returned [] for any bank at
+    // all, including one that filed nothing.
     for (const c of everyCase()) {
-      expect(unreachable(c.investigation, c.essential)).toEqual([]);
+      expect(reachable(c.bank, c.essential)).toEqual([]);
     }
   });
 
@@ -265,12 +278,13 @@ describe("the bank", () => {
   });
 
   it("never lets the killer be the only one with nothing to say", () => {
-    // Rule 7 promises the player that silence proves nothing. The culprit is
-    // forced into silence around the murder — nobody may speak from the
-    // killer's position — so that promise has to be made true by giving the
-    // innocents comparable gaps. A generator that gave only the culprit gaps
-    // would fail here.
+    // Rule 7 promises the player that silence proves nothing. The culprit has
+    // least to say around the murder — nobody may speak from the killer's
+    // position — so that promise has to be made true rather than printed.
     for (const c of everyCase()) {
+      expect(silenceLeaks(c.frame, c.world, c.bank)).toEqual([]);
+      // Stated again without the helper, so this is not the helper marking
+      // its own homework.
       for (const key of murderTopics(c.frame, c.world)) {
         const silent: number[] = [];
         for (let s = 0; s < c.frame.suspects; s++) {
@@ -283,6 +297,55 @@ describe("the bank", () => {
           ).not.toBe(c.world.culprit);
         }
       }
+    }
+  });
+
+  it("never leaves the killer the only unaccounted-for suspect at the murder hour", () => {
+    // The same tell from the other side. No card can place the culprit at t*
+    // — the only true one would name them — so if every other suspect has
+    // one, the blank row is the answer. Measured before the fix: 47% of Easy
+    // cases and 9% of Normal. Lying presets barely felt it, because the false
+    // alibi is itself a card placing the killer at the murder hour.
+    for (const c of everyCase()) {
+      expect(placementLeaks(c.frame, c.world, c.bank)).toEqual([]);
+    }
+  });
+
+  it("keeps that promise across a corpus big enough to see it break", () => {
+    /**
+     * The sixteen cases the other tests share cannot see a one-in-a-hundred
+     * event, and that is exactly how this shipped: the property was already
+     * asserted, and the bug was still there. Measured before the fix, 1.3% of
+     * Easy and Normal cases named their killer by silence — so a test that
+     * would have caught it has to generate enough cases to expect two.
+     *
+     * Easy costs about 11 ms and Normal about 33 ms, so this is a second or
+     * so for a hundred and forty cases.
+     */
+    for (const [preset, n] of [["easy", 90] as const, ["normal", 50] as const]) {
+      for (let i = 0; i < n; i++) {
+        const out = generate(newCaseId(preset, `silence${i}`));
+        const c = out.case;
+        expect(c, `${preset}/silence${i} made no case`).not.toBeNull();
+        if (!c) continue;
+        expect(
+          silenceLeaks(c.frame, c.world, c.bank),
+          `${preset}/silence${i}: the killer is the only one keeping quiet`,
+        ).toEqual([]);
+        expect(
+          placementLeaks(c.frame, c.world, c.bank),
+          `${preset}/silence${i}: the killer is the only unplaced suspect`,
+        ).toEqual([]);
+      }
+    }
+  });
+
+  it("holds no card that no question would release", () => {
+    // `allCards` is what the bank certificate and playTier are measured on,
+    // and `generate.ts` documents the label as the grade a thorough player
+    // faces. A card nothing releases is not part of that.
+    for (const c of everyCase()) {
+      expect(reachable(c.bank, allCards(c.bank))).toEqual([]);
     }
   });
 
@@ -309,45 +372,79 @@ describe("the pool it all comes from", () => {
     }
   });
 
-  it("offers no card that is the answer on its own", () => {
+  it("offers no card that settles the answer on its own", () => {
+    // Asked of the SOLVER, not of the filter. The previous version asserted
+    // `givesAwayAnswer(...) === false` over cards that `givesAwayAnswer` had
+    // just filtered, so any weakening of the ban satisfied its own test.
+    // This holds whatever the ban does or does not catch.
     for (const c of everyCase()) {
       for (const k of allCards(c.bank)) {
+        const r = solve(c.frame, [...c.opening, k], { record: false });
         expect(
-          givesAwayAnswer(c.frame, c.world, k.body),
-          `${c.id.preset}: ${k.id} gives the answer away`,
+          r.finished,
+          `${c.id.preset}: ${k.id} (${k.body.kind}) settles the answer alone`,
         ).toBe(false);
       }
     }
   });
 
-  it("only lets a suspect say what they were placed to know", () => {
+  it("never lets a suspect speak from a vantage point only the killer has", () => {
+    // Stated without calling `couldKnow`: rule 5 says nobody but the killer
+    // is in r* from t* on, so no innocent's card may name a slot at which
+    // its own speaker was standing there.
     for (const c of everyCase()) {
       for (const k of allCards(c.bank)) {
         if (k.source.kind !== "testimony") continue;
         const s = k.source.speaker;
-        if (s === c.world.culprit) continue; // their story is not knowledge
-        expect(
-          couldKnow(c.frame, c.world, s, k.body),
-          `${c.id.preset}: suspect ${s} could not know ${k.id}`,
-        ).toBe(true);
+        if (s === c.world.culprit) continue; // a story is not knowledge
+        for (const t of clueMentions(k.body, c.frame).slots) {
+          const stood = c.world.loc[s][t] === c.frame.murderRoom;
+          expect(
+            stood && t >= c.world.murderSlot,
+            `${c.id.preset}: ${k.id} rests on suspect ${s} being in r* at ${t}`,
+          ).toBe(false);
+        }
       }
     }
   });
 
-  it("never lets anybody speak from the killer's position", () => {
-    // Nobody but the killer stands in r* from t* on, so a statement resting
-    // on that position would name its own speaker.
+  it("refuses the killer the one thing only they could have seen", () => {
+    // A unit test of the guard rather than a sweep over data it filtered:
+    // standing over the body, the culprit is the only person who could count
+    // the heads in that room, and saying so would name them.
     for (const c of everyCase()) {
-      for (const k of allCards(c.bank)) {
-        if (k.source.kind !== "testimony") continue;
-        const s = k.source.speaker;
-        for (let t = c.world.murderSlot; t < c.frame.slots; t++) {
-          if (c.world.loc[s][t] !== c.frame.murderRoom) continue;
-          // They were there, so this card must not be one of theirs about
-          // anything they could only have seen from there.
+      const { culprit, murderSlot } = c.world;
+      for (let t = murderSlot; t < c.frame.slots; t++) {
+        if (c.world.loc[culprit][t] !== c.frame.murderRoom) continue;
+        const r = c.frame.murderRoom;
+        for (const body of [
+          { kind: "Occupied", r, t } as const,
+          { kind: "Count", r, t, k: 1 } as const,
+        ]) {
           expect(
-            couldKnow(c.frame, c.world, s, k.body) && s !== c.world.culprit,
+            couldKnow(c.frame, c.world, culprit, body),
+            `${c.id.preset}: the killer may say ${body.kind} about r* at ${t}`,
           ).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("offers no card that pins the murder hour against the briefing", () => {
+    // The briefing's window is in the player's hand from the first second,
+    // so a card is a giveaway when what it leaves *after* that window is one
+    // slot — not merely when it names one slot by itself.
+    for (const c of everyCase()) {
+      const [lo, hi] = murderRange(c.frame.slots);
+      for (const k of allCards(c.bank)) {
+        if (k.body.kind === "DeathWindow") {
+          expect(
+            Math.max(k.body.a, lo) === Math.min(k.body.b, hi),
+            `${c.id.preset}: ${k.id} leaves one hour standing`,
+          ).toBe(false);
+        }
+        if (k.body.kind === "AliveAt") {
+          expect(k.body.t + 1, `${c.id.preset}: ${k.id}`).not.toBe(hi);
         }
       }
     }

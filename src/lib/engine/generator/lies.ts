@@ -26,25 +26,39 @@
  * surviving pair still uses, so a story falling apart can pin the murder slot
  * outright. It is only the *grid* a lie leaves alone.
  *
- * That gives the two conditions a story has to meet, and `probe` is how each
- * is measured. Turning `lying` off makes every testimony bind, which is
- * exactly what tier 3's branch does to the one suspect it supposes innocent:
+ * So there is exactly **one** condition worth testing, and `contradicts` is
+ * how it is tested. Turning `lying` off makes every testimony bind, which is
+ * what tier 3's branch does to the suspect it supposes innocent:
  *
- *  1. **The story must not contradict on its own.** If it does, tier 3 fires
- *     on the first pass with no other card in play, and the case is graded
- *     Hard for a deduction nobody had to make. A one-slot detour is walkable
- *     by construction, but the culprit's *true* statements can still collide
- *     with it — which is why `retracted` exists, and why it is a deletion and
- *     not merely an addition.
- *  2. **The story must fall to the facts.** If no combination of physical
- *     evidence can refute it, tier 3 can never fire and the lie is decoration.
+ * > **The killer's account must not convict the killer by itself.** If the
+ * > story plus their own retained true statements cannot all stand, tier 3
+ * > fires on the first pass with no other card in play, and the case is
+ * > graded Hard for a deduction nobody had to make.
  *
- * The second probe is a necessary condition rather than a sufficient one, and
- * the difference is worth stating. It trusts the culprit against every fact
- * at once; the real tier-3 branch only has the cards the player has collected
- * and only trusts suspects the state has cleared. So a story that passes here
- * may still never be caught in play, and a story that fails here certainly
- * never will be. The sim table measures the rest.
+ * A one-slot detour is walkable by construction, so it is the culprit's own
+ * *true* statements that can collide with it — which is why `retracted`
+ * exists, and why it is a deletion and not merely an addition.
+ *
+ * **Two other probes were here and are gone**, because a review showed
+ * neither could ever fail.
+ *
+ * One asked whether the story contradicted with only the case file beside it.
+ * Adding clues can only add constraints, so a contradiction on that smaller
+ * set implies one on the set the remaining probe uses: it could only fire
+ * where the other already had.
+ *
+ * The other asked that the story "fall to the facts" — that the physical
+ * evidence be able to refute it — on the grounds that a lie nothing can catch
+ * is decoration. It passed every time, and it had to. The story is
+ * `At(culprit, t*, room)`, and `trueBodies` emits `NotAt(p, t, r)` for every
+ * room a person was not in, so `NotAt(culprit, t*, room)` is always in the
+ * pool as a fact and flatly contradicts it. That is worth knowing for its own
+ * sake: **the plan's requirement that a lie be "not refuted by any single
+ * card" is unachievable in this clue language**, because every positional
+ * claim has its own direct denial. What stands between the player and the
+ * answer is not the scarcity of the refutation but having to hold both cards
+ * and make a trust argument from them, and whether that actually happens is
+ * what the tier band and the sim table measure.
  */
 
 import { canMove } from "../axioms";
@@ -107,7 +121,6 @@ export function inventAlibi(
 
   const before = world.loc[c][tStar - 1];
   const after = world.loc[c][tStar + 1];
-  const facts = pool.filter((k) => k.source.kind === "fact");
 
   // Rooms the culprit could plausibly claim: reachable from where they really
   // were, and leading to where they really went next. A one-slot detour, so
@@ -152,16 +165,14 @@ export function inventAlibi(
       source: { kind: "testimony", speaker: c } as const,
     }));
 
-    const kept = pool.filter((k) => !retracted.has(k.id));
-    // 1. The story must stand up on its own...
-    if (contradicts(frame, [...opening, ...lies])) continue;
-    // ...and alongside every true thing its teller still says.
-    const mine = kept.filter(
-      (k) => k.source.kind === "testimony" && k.source.speaker === c,
+    // The one condition: the killer's own account must not convict them.
+    const mine = pool.filter(
+      (k) =>
+        !retracted.has(k.id) &&
+        k.source.kind === "testimony" &&
+        k.source.speaker === c,
     );
     if (contradicts(frame, [...opening, ...mine, ...lies])) continue;
-    // 2. ...and it must fall to the facts.
-    if (!contradicts(frame, [...opening, ...facts, ...lies])) continue;
 
     return { room, lies, retracted, framed };
   }

@@ -157,23 +157,16 @@ function concluded(c: Conclusion): string[] {
 
 /* ------------------------------------------------------------ the checks */
 
-/**
- * Cards the investigation cannot hand over.
- *
- * Empty is the only acceptable answer: a case with an unreachable essential
- * card is a case that cannot be solved by playing it, however fair the clue
- * set is on paper.
+/*
+ * There is no `unreachable(investigation, essential)` here, and there was.
+ * It collected the ids out of `actions[].releases` and filtered `essential`
+ * by them — but `planInvestigation` builds those releases by walking
+ * `essential`, so it was asking a list built from the essential cards whether
+ * it contained the essential cards. It returned `[]` for every input,
+ * including a bank that filed nothing at all, and `generate.ts` was treating
+ * that as one of its two bug certificates. `bank.ts#reachable` asks the bank,
+ * which is the thing that actually hands a card over.
  */
-export function unreachable(
-  investigation: Investigation,
-  essential: readonly Clue[],
-): Clue[] {
-  const released = new Set<ClueId>();
-  for (const a of investigation.actions) {
-    for (const id of a.releases) released.add(id);
-  }
-  return essential.filter((c) => !released.has(c.id));
-}
 
 /**
  * Does the plan's action set actually contain this action?

@@ -125,7 +125,7 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 
 ## State of the project (2026-09-20)
 
-**Waves 0-3 done.** 415 tests green in ~5s, `npm run check` at 0/0 over 341 files.
+**Waves 0-3 done.** 421 tests green in ~8s, `npm run check` at 0/0 over 342 files.
 
 - **Wave 0** - toolchain: SvelteKit + Svelte 5 + Vitest + adapter-static, `vite-node` for
   Node tools, generated icons, PWA manifest (no service worker yet - wave 4).
@@ -155,6 +155,20 @@ Things a later wave will want to know, beyond what ARCHITECTURE.md records:
   the player unable to accuse, because a step recorded which pairs it removed but not
   which suspect that cleared - and the tests asked whether hints were true and whether
   they stopped, never whether they got the player anywhere. See ARCHITECTURE.md section 8.
+- **Wave 3 was reviewed adversarially like waves 1 and 2, and it found the same
+  *shape* of bug all three times: the property was already asserted, and the assertion
+  was what was broken.** A test that calls the function under test to decide whether
+  the function under test was applied; a certificate derived from the thing it
+  certifies; a golden signature that summarises away the thing it should watch. All
+  four looked like coverage on a green board. Ask of any new guard not "does it pass"
+  but "what would have to be true for this to fail, and can that happen?"
+- **A leak can be in the SHAPE of the bank, not its contents.** Every card can be true
+  and fair and the case still give itself away: the killer was the only suspect with
+  nothing to say about the murder hour (1.3% of Easy cases), and the only one no card
+  placed at it (47%). `bank.ts#silenceLeaks` and `#placementLeaks` guard both, and
+  `generate.ts` rejects on them. Wave 5's prose and wave 6's interrogation can
+  reintroduce this class - think about what the *distribution* of what is said reveals,
+  not only each sentence.
 - **Two numbers, not one.** A case carries `tier` (the grade of the proof set) and
   `playTier` (the grade of everything the bank can release). A player who asks everybody
   everything faces the second, and before it was guarded, 16 of 16 cases were solvable at

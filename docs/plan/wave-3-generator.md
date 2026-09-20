@@ -245,7 +245,10 @@ not contradict on its own, and it must fall to the facts.
 Two things the task gets wrong about consequences. **Replacement is load-bearing**: the
 culprit's own true statements that the story falsifies must be *deleted*, not merely
 joined, or their two cards refute each other and tier 3 wins for free. And the false
-sighting does not "frame an innocent" in any sense a solver can be misled by —
+sighting is reserved by the plan for Expert, and the sim table overruled that: it is
+the card that makes the story survive selection at all (6 of 44 Hard cases without it,
+24 of 46 with), because it is what gives conflict-pair something to bite on. And it
+does not "frame an innocent" in any sense a solver can be misled by —
 refuting an innocent's innocence is impossible while the rules are sound. It is a
 player-facing red herring whose only mechanical effect is to give conflict-pair
 something to bite on.
@@ -278,3 +281,96 @@ the table asks for more.
   sweep because a one-slot detour is walkable by construction. If a later wave wants
   longer stories it will need the sweep, and it should move to a shared module rather
   than be copied.
+
+---
+
+## What the adversarial review found (2026-09-20)
+
+Eight independent lenses over the finished wave — soundness, determinism,
+information leaks, the knowledge model, grade integrity, playability, mutation
+testing and conformance — with every finding sent to two skeptics told to refute
+it. Twenty-four survived, collapsing to eleven distinct defects. None was an
+unsoundness: no case was ever unfair, and the two solvers never disagreed. What
+the review found instead was **four places where the thing doing the checking
+could not fail**, and two real leaks that a green suite could not see.
+
+### The bank named the killer, and the promise that it would not was a best effort
+
+Rule 7 tells the player that silence proves nothing. The killer is the one
+person who may not speak from the murder room, so keeping that promise takes
+work — and the code that did it reported nothing when it could not. **1.3% of
+Easy and Normal cases shipped with the killer as the only suspect with nothing
+to say about the murder hour.** The property already had a test; the test was
+correct; it ran over sixteen cases against a one-in-a-hundred event.
+
+The second face of it was bigger and nobody had thought of it. No card can ever
+*place* the culprit at `t*`, because the only true one names them — so if every
+other suspect has a placing card, the blank row is the answer. **47% of Easy
+cases and 9% of Normal.** Lying presets barely felt it, for a reason worth
+keeping in mind: the killer's false alibi is itself a card placing them at the
+murder hour, which is what an alibi is for.
+
+Both are fixed the honest way round — `coverTheKiller` gives the killer
+something to say, `hideAnInnocent` leaves somebody else unaccounted-for too —
+and both are now *checked* by `silenceLeaks` and `placementLeaks`, which are
+deliberately not the fixers, with `generate.ts` throwing the case back
+(`legible-silence`, `legible-gap`). Measured after: 0 of 600.
+
+### Four things that could not fail
+
+- **`unreachable(investigation, essential)`** built its action list by walking
+  `essential`, then asked whether that list contained `essential`. It returned
+  "all reachable" for any bank whatever, including one that filed nothing, and
+  it was one of `generate.ts`'s two bug certificates. It now asks the bank.
+- **Three tests** asserted `givesAwayAnswer(...) === false` and
+  `couldKnow(...) === true` over cards those same functions had just filtered.
+  Any weakening of either filter satisfied its own test. They now ask the
+  solver ("does this card settle the answer on its own?") and state the
+  vantage-point rule directly from the world.
+- **The golden vectors** summarised the whole statement bank as
+  `allCards().length`, which is blind to who says what. The function that
+  decides which suspects are left silent only edits `bank.said`, so it could be
+  rewritten entirely and leave the file green. They now carry a checksum of the
+  bank.
+- **Two of the three probes in `lies.ts`.** One was subsumed by another. The
+  other asked that the story "fall to the facts", and always passed, because
+  `NotAt(culprit, t*, room)` is in the pool by construction and contradicts
+  `At(culprit, t*, room)` flatly.
+
+### Two more the review was right about
+
+**The hour needed a sharper ban.** `givesAwayAnswer` tested `a === b` for a
+`DeathWindow`, but the player holds the briefing window from the first second,
+so what matters is what a card leaves *against that*. Measured: 19 hour-pinning
+cards in 60 Easy banks. The test is now the intersection, and `AliveAt(T-3)`
+joins it.
+
+**The measurement justifying the ban did not reproduce.** The file claimed "9
+of 12 Easy and 5 of 12 Expert graded at tier 0" without it. The tier is the
+wrong measure — a case can grade tier 3 and still contain a card naming the
+killer — and the Expert half did not replay. Re-taken by the right question:
+without the ban, **73% of Easy, 45% of Normal, 38% of Hard and 27% of Expert
+proof sets hold a card that is the answer**. ARCHITECTURE.md §9 has the table
+and says how to reproduce it.
+
+### What it confirmed
+
+- No unfair case in 480 generated, both certificates passing every time.
+- The proof sets are irredundant in practice: a second pass over all 480 found
+  0.00 removable cards per case. `select.ts` still only claims minimality for
+  the order it used, which remains the honest statement, but the worry behind
+  the caveat is measured now rather than hanging.
+- The scripted player added after the review's playability lens — start with
+  the opening, do exactly what `hint()` says — reaches a correct accusation on
+  every case. That is wave 2's lesson applied one level up, and it passed first
+  time.
+
+### The pattern, which is the thing to carry into wave 4
+
+In every one of the four, **the property was already asserted and the assertion
+was what was broken**. A test that calls the function under test to decide
+whether the function under test was applied; a certificate derived from the
+thing it certifies; a signature that summarises away exactly what it is meant to
+watch. Each of those looks like coverage on a green board. The question to ask
+of a new guard is not "does it pass" but "what would have to be true for this to
+fail, and can that happen?"
