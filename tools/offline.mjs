@@ -176,6 +176,40 @@ async function main() {
       await backToDesk(cdp);
     }
 
+    // 6. A shipped case, opened with the plug still out.
+    //
+    //    This is the point of shipping a pack at all: somebody with no key
+    //    and no network can still play a case somebody wrote. Generating one
+    //    offline (step 5) proves the engine survives the cache; this proves
+    //    the pack does, which is a different file, a different loader and a
+    //    different way to fail.
+    const shipped = await cdp.eval(`
+      await window.__sk.settle();
+      const shelf = window.__sk.all("button.case");
+      if (shelf.length === 0) return { none: true };
+      shelf[0].click();
+      await new Promise((r) => setTimeout(r, 1500));
+      await window.__sk.settle();
+      const head = document.querySelector("[data-screen='briefing'] h1");
+      return {
+        title: head ? window.__sk.text(head) : null,
+        facts: window.__sk.all(".facts li").map(window.__sk.text),
+      };
+    `);
+    if (shipped.none) {
+      console.log("no pack is shipped, so there was nothing to open");
+    } else {
+      if (!shipped.title) throw new Error("a shipped case would not open offline");
+      // The whole reason for a pack is that it reads in written words.
+      const engineNames = /Room [0-9]|Suspect [A-H]|slot [0-9]/;
+      const numbered = (shipped.facts ?? []).filter((line) => engineNames.test(line));
+      if (numbered.length > 0) {
+        throw new Error(`a shipped case opened in engine names: ${numbered[0]}`);
+      }
+      await cdp.shot("offline-pack");
+      console.log(`offline: the shipped case "${shipped.title}" opened, in its own words`);
+    }
+
     console.log(`\nPASS — ${PRESETS.length} difficulties generated and played offline.`);
   } finally {
     await close();

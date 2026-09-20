@@ -141,6 +141,12 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 - **`npm run playthrough` needs the dev server, `npm run offline` needs the built one.**
   `vite dev` serves no service worker and no content-hashed chunks, so pointing the
   offline check at :1430 tests nothing and says so.
+- **A preview server left running on :4173 serves a STALE build, and your new one fails
+  silently.** `vite preview` exits with "Port 4173 is already in use" into whatever log
+  you redirected it to, the old process keeps answering, and `npm run offline` then
+  tests a build from an hour ago. It cost a wave-5 debugging detour that ended at "the
+  attribute is in the build and absent from the page". Same trap as the dev port, one
+  server along: check `Get-NetTCPConnection -LocalPort 4173` before believing a failure.
 - **A `*.live.test.ts` must be EXCLUDED from `vitest.config.ts`, not merely absent from
   it.** The name ends in `.test.ts`, so `npm test`'s include pattern matched the live
   test and made three unintended API calls the first time that file existed. The
