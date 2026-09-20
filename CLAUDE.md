@@ -141,6 +141,10 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 - **`npm run playthrough` needs the dev server, `npm run offline` needs the built one.**
   `vite dev` serves no service worker and no content-hashed chunks, so pointing the
   offline check at :1430 tests nothing and says so.
+- **A `*.live.test.ts` must be EXCLUDED from `vitest.config.ts`, not merely absent from
+  it.** The name ends in `.test.ts`, so `npm test`'s include pattern matched the live
+  test and made three unintended API calls the first time that file existed. The
+  `exclude` line in that config is a spending guard, not tidiness.
 - vitest sometimes swallows `console.log`; write debug output to a file instead.
 - `../index.html` (the portfolio catalog) has very long lines of embedded art and cannot
   be read whole; read it in slices.
@@ -159,8 +163,9 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 
 ## State of the project (2026-09-20)
 
-**Waves 0-4 done.** 527 tests green in ~20s, `npm run check` at 0/0 over 373 files.
-The game is playable end to end, offline, with engine-written sentences.
+**Waves 0-4 done; wave 5 built but unpaid.** 676 tests green in ~30s, `npm run check`
+at 0/0 over 491 files. The game is playable end to end, offline, with engine-written
+sentences, and can now be dressed by a model whose every sentence is checked first.
 
 - **Wave 0** - toolchain: SvelteKit + Svelte 5 + Vitest + adapter-static, `vite-node` for
   Node tools, generated icons, PWA manifest.
@@ -178,13 +183,25 @@ The game is playable end to end, offline, with engine-written sentences.
 - **Wave 4** - the game. `game/` (controller, notebook, errors, storage, stats, rating,
   a scripted blind player), `ui/` (17 Svelte components), `service-worker.ts`, and three
   browser/measurement tools.
+- **Wave 5** - the words. `llm/` (provider seam, Gemini, key handling, stub, skin schema,
+  prompts, fidelity, author, glossary, IndexedDB skin store, pack codec and loader),
+  `engine/clues/schema.ts` (the clue language as JSON schema, derived from field domains
+  declared per kind), one glossary threaded through the controller, and
+  `tools/author-case.mjs` with `--estimate` and `--dry-run`. **Nothing paid has run:**
+  every test is against `llm/stub.ts`.
 
 **Owner decisions, 2026-09-20.** The **first deploy is deferred to wave 8**, which
 already owns "repo, deploy, catalog" - nothing is published and no Cloudflare project
 exists. And wave 5 is to be **built against stubbed model responses first**, with an
 exact expected call count brought back for approval before any real batch is spent.
 
-Next: wave 5, LLM skins and the fidelity check, offline until the estimate is approved.
+**The wave-5 estimate, owed under "ask the owner first".** `npm run author --
+--estimate` makes no calls and measures the real prompts. Three Normal cases: 119 cards,
+**9 calls** (3 per case: write, check, sum up), 27 if every retry is taken, **$0.056** at
+the pinned models. So the exit criteria's twenty-case fallback measurement is about **60
+calls and well under a dollar**, and task 9's three-case pack is another 9.
+
+Next: the owner's go-ahead for that batch, then wave 6, free-text interrogation.
 
 ## How it plays (2026-09-20, template text only)
 

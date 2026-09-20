@@ -934,3 +934,273 @@ which is its entire job, so that check passed on a live network and failed on
 a dead one. It uses a cross-origin request now, which `service-worker.ts`
 declines to handle and which therefore reaches the network or does not happen.
 
+## 11. The LLM layer
+
+Wave 5. The engine has owned every fact since wave 1; this is the part that
+owns none of them and writes all of the words.
+
+### The seam
+
+`llm/provider.ts` is two methods wide — `generateJSON` and `generateImage` —
+and everything above it talks only in those terms. `llm/gemini.ts` is the only
+file in the repository that imports the vendor SDK; `llm/stub.ts` is the other
+implementation, and it is what every test above the seam runs against, with no
+key and no network. That is not only a testing convenience: the owner's
+instruction for this wave was to build it stubbed and bring back a call count
+before spending, and a seam this narrow is what made that possible.
+
+Two shapes are load-bearing rather than incidental.
+
+**`generateJSON` returns `unknown`.** A schema-constrained call is a request,
+not a guarantee. The model can answer with valid JSON that is not the shape
+asked for, and a signature promising `T` would launder that into a type error
+nobody sees until it is a runtime crash three layers up. Every caller
+validates, which is the same discipline `game/storage.ts` applies to
+`localStorage`.
+
+**The provider never holds a key.** `KeySource` is a function, called at the
+moment of the request. Nothing keeps the key in a field, so pasting one takes
+effect at once and forgetting one takes effect at once.
+
+### Invariant 9, and where it actually breaks
+
+The obvious reading of "the key never enters a file, a URL or a log" is "do
+not write `console.log(key)`". Nobody does that. The way it really breaks is a
+provider SDK putting the failing request's URL, or the offending header, into
+the message of the error it throws — which is then logged by something
+innocent well away from any code that knows what a key is.
+
+So `errors.ts#scrub` strips anything key-shaped, plus any `?key=` query
+parameter, and **every `LlmError` message goes through it in the constructor**.
+There is no path that builds one without scrubbing. The raw text survives on
+`.cause` for a debugger; nothing logs `.cause`.
+
+The browser key lives under its own `localStorage` slot and deliberately not
+as a field of `Settings`: settings are written on every toggle and are the
+obvious thing to export or paste into a bug report, and a key in that object
+leaves with all of it. `.env.local` is read **only** when `import.meta.env.DEV`
+— Vite inlines `VITE_*` at build time, so a key present in a production build
+environment ships inside the JavaScript every visitor downloads. The settings
+screen never binds the key to an input after it is saved, so it is not in the
+DOM to be screenshotted.
+
+### Which model, and which API surface
+
+Checked against ai.google.dev on 2026-09-20: all three ids the sibling
+projects pin are current and GA. `WRITER_MODEL` is `gemini-3.7-flash`, which
+is what two projects on this machine already run on.
+
+**`PARSER_MODEL` is deliberately a different model** (`gemini-3.8-flash`). The
+fidelity check asks "does this sentence say what the clue says?", and asking
+the author is the weakest possible form of that question: the same model, with
+the same priors about what it meant, is the one most likely to read its own
+ambiguous sentence charitably. A different reader is the point of the check.
+`gemini-3.5-flash-lite` is a third of the output cost and is documented in
+`models.ts` as the cheap option, held in reserve rather than used — a weaker
+reader makes both kinds of mistake, and while a false mismatch costs a dull
+template sentence, a false match puts unverified prose in front of the player.
+
+Google now documents `client.interactions.create` and says it is recommended
+for new development, while `generateContent` "remains fully supported" with no
+end-of-support date. `gemini.ts` uses `generateContent` with
+`responseJsonSchema`, because every field it passes was checked line by line
+against the installed `genai.d.ts` — `abortSignal` (:4549),
+`systemInstruction` (:4554), `temperature` (:4560), `responseMimeType` (:4613),
+`responseJsonSchema` (:4640) — and there is no way to test the other surface
+here without spending a call on it. Moving is a change to one file.
+
+`@google/genai` is pinned at 2.6.0, matching both siblings. npm's latest is
+2.23.0; the only breaking change between them (2.0.0) predates 2.6.0, so a
+bump is low-risk and staying put is the exact-pin convention. The SDK is 310 KB
+raw, **58 KB gzipped — about the size of the app's own main chunk** — and
+lands in a chunk that is only *fetched* when a case is actually being written,
+because `dressCase` imports it dynamically. The service worker still precaches
+it along with every other built asset, which buys nothing: writing a case
+needs to reach Google, so the one situation the cache exists for is the one
+situation the SDK cannot be used in. Excluding it needs a named chunk, and
+SvelteKit owns `chunkFileNames`, so `manualChunks` alone does not produce one.
+Left as it is, measured and written down, for wave 8 to decide.
+
+### The clue language as a schema
+
+`types.ts` reserved a `ClueModule.schema` slot in wave 1 "for the JSON schema
+fragment for the fidelity parse-back". Filling it with a hand-written fragment
+per kind turned out to be the wrong shape: a fragment has to agree with the
+frame's actual bounds, with `valid`, and with whatever reads the model's
+answer back, and seventeen of them are seventeen chances for those to drift
+apart silently — inside the one check whose entire job is to notice that two
+things disagree.
+
+So a module declares `fields`, the domain each payload field draws from, and
+`clues/schema.ts` derives both the JSON fragment and the parser from that one
+declaration. The type is exact —
+
+```ts
+export type BodyFields<K extends ClueKind> = {
+  [F in Exclude<keyof BodyOf<K>, "kind">]: FieldDomain;
+};
+```
+
+— so a field nobody declared is a compile error, and so is a declared field
+the payload does not have. `KindModule` makes it required, as it already does
+for `template`, and for a sharper reason: a kind whose fields are undeclared
+is a kind whose prose can never be verified, so invariant 6 would send every
+one of its cards to the template. Silently. Nothing else would go wrong; the
+model would just quietly stop writing that kind of card.
+
+The fragment is built **per frame**, so a seven-room house says
+`minimum: 0, maximum: 6`. That is both a tighter constraint on the model and
+the exact bound the parser needs, from one source.
+
+`parseClueBody` normalises before it validates, because the engine's own
+notion of clue equality already normalises — `Stayed(p,r,t3,t1)` and
+`Stayed(p,r,t1,t3)` are one clue — and rejecting the second spelling would be
+the check reporting a difference the engine does not believe in.
+
+### What each call may see, enforced by signatures
+
+Three calls dress a case, and the rule about what each is told is a type
+rather than a comment.
+
+- **Call A, the writer.** `writerMaterial` is the only function that touches a
+  `GeneratedCase`, and `buildWriterPrompt` is never handed one — it takes a
+  `WriterMaterial`, which has no field for the culprit, the murder slot, which
+  statements are false, or which clues the proof needs.
+- **Call C, the parse-back.** `buildParseBackPrompt` takes prose, a frame and
+  a glossary. There is no argument through which a clue could be passed.
+- **Call B, the summing-up.** This one does know the answer. It runs last, so
+  the answer is never in the same context as prose being verified.
+
+**The trap this arrangement exists to close** was named in the plan file before
+the wave started. The natural way to write a parse-back check is to build the
+model's input from the formal clue — and then the check compares the clue with
+itself, passes whatever the prose says for ever, and produces a fallback rate,
+a log and a green test the whole time. Waves 1, 2 and 3 were each reviewed
+adversarially and each turned up the same shape of defect: a property that was
+asserted, where the assertion was the broken part. This one is closed in the
+type system instead.
+
+The leak tests do not read the prompt looking for a culprit — the culprit is
+one of the cast and appears on every second line. **They change who did it and
+when, rebuild, and require the prompt not to move by a single byte.** Also for
+reversing the entire simulated evening, and again at the `authorSkin` level,
+where the case and the writer are both in scope.
+
+One addition to the plan, which said the writer gets the bank "in canonical
+form": it also gets the engine's own template sentence for each clue. A writer
+shown `say(p1)|Saw(p0,p3,t4,r2)` and nothing else has to decode the clue
+language before it can write, and every decoding slip becomes a fidelity
+failure and a paid retry. It leaks nothing — that template is the exact
+sentence the player sees when prose is unavailable.
+
+### The fidelity check
+
+Sentences go to the checker under opaque ids (`s0`, `s1`, …) in a shuffled
+order, so nothing in the batch hints at what any entry ought to be. The
+shuffle is seeded from the clue ids, so it is a shuffle with respect to the
+enumeration order but the same one every time, which makes a failure
+reproducible and a recorded transcript replayable.
+
+Five ways a reading is rejected: `unreadable`, `different-clue`, `extra-claim`,
+`misattributed`, `missing`. An extra claim is rejected even when the clue
+itself is right, which is what stops the prose quietly asserting a second
+placement. Failures are rewritten with the complaint fed back verbatim — a
+retry that says only "try again" is worth very little, and the interesting
+failures (a sentence that says slightly more than its clue, or that reads as
+the neighbouring one) are usually fixable in one attempt by somebody told
+exactly which it was. After the retries, the clue falls back to the engine's
+template. That is invariant 6's other half, and it is why the template
+renderer has to cover every clue type.
+
+**The speaker is given to the checker and is not verified by it**, and that is
+deliberate rather than an oversight. A first-person sentence cannot be
+resolved without knowing who is speaking. But `clue.source` is the engine's,
+the writer never chooses it, and pretending to verify something the model was
+just told would be the self-confirming check this whole module is arranged to
+prevent. What *is* checked is `attributedTo`: whether the sentence credits the
+observation to somebody other than the speaker.
+
+**A fallback rate of zero is not good news on its own.** The tests that make
+it mean something are the near-misses, and the sharpest is prose swapped
+between two clues with nothing telling the stub reader to misread anything:
+every sentence is a good sentence about a real clue, and only the filing is
+wrong. Both must fail.
+
+And one trap worth stating because it is the opposite of what it looks like:
+**swapping the two people inside a `Saw` is not a near-miss.** `Saw`
+normalises its pair, because the formula is symmetric and who is speaking
+lives in `source`. A test built on that swap would be asserting the engine is
+broken.
+
+### Task 7 was not a change to `explain.ts`
+
+The plan says "with a skin present, `explain.ts` sentences use the skin's
+names", which reads like work in that file and is not: it has taken a
+`Glossary` on every path since wave 2 and only defaulted politely when nobody
+passed one. What was missing was a caller. `game/controller.ts` built a fresh
+`defaultGlossary(frame)` in **eight separate places**, and any one of them left
+behind would have shown a player "Suspect C" in the status bar beside cards
+naming Mrs Pellworth. There is now one `glossaryOf(g)`.
+
+Four sentences in `explain.ts` said "the victim" as a literal while every card
+around them went through the glossary. Under `defaultGlossary` they render
+byte-identically, so only a skin would ever have shown the difference — which
+is exactly why nobody would have noticed.
+
+`explainer` also takes the verified prose, so `clue()` returns the model's
+sentence where there is one and the engine's where there is not. That single
+change dresses the evidence pane, the hint panel, the summing-up and the proof
+cards at once, and it is task 11 as well: the canonical form under each card
+was already there, and **a card that fell back is marked no differently from
+any other**, which the plan asks for in as many words.
+
+### Packs: the one place a case is not its id
+
+Invariant 4 says a case *is* its id, and everywhere else that holds. A pack is
+the exception, on purpose. An id is a seed plus a generator, so it rebuilds
+the same case only while the generator is unchanged — the right trade for a
+shared link, and the wrong one for a case somebody paid a model to write. A
+tuning change to the clue selector, which the plan expects more of, would
+quietly re-point every shipped case at a different puzzle with the old prose
+still attached to it.
+
+So a pack stores the whole case, and that needs a codec, because
+`GeneratedCase` does not survive `JSON.stringify`. There are exactly four
+containers — `bank.said`, `bank.found`, `bank.cards` and `alibi.retracted` —
+and `bank.found` is keyed by a number, which a JSON object would have turned
+into a string. The round-trip test compares the whole decoded object against
+the original rather than spot-checking fields: a fifth container added later
+and forgotten would come back as `{}`, giving a case with an empty bank and no
+symptom at all until somebody asked a question. A second test performs the
+naive `JSON.parse(JSON.stringify(...))` and asserts it loses the bank, so the
+codec's reason for existing is itself checked.
+
+`verifyPack` re-proves a shipped case **from the file**: the exhaustive oracle,
+the recorded tier against a fresh `solve`, prose-or-template for every card,
+and a skin that fits the house it is on. Checking a stored tier against a
+stored tier would be this wave's own warning played straight. The authoring
+CLI refuses to write a pack that does not verify, and `shipped.test.ts`
+re-verifies every pack in the repository on every `npm test`. Runtime does
+not: the oracle is a second or so on an Expert case, and repeating a proof
+already made twice would be a visible pause for nothing.
+
+### Measuring before spending
+
+`npm run author -- --estimate` makes **no** calls. It generates the real cases,
+builds the real prompts and measures them, so the number owed to the owner
+before a paid batch is measured rather than guessed. Input token counts are
+real; output counts are estimated at ~45 tokens a card and are the least
+certain figure in the report.
+
+`--dry-run` drives the entire pipeline through the stub — write, check,
+rewrite, fall back, encode, verify, manifest — so the thing being paid for is
+known to work end to end before any of it is.
+
+Measured on 2026-09-20, three Normal cases: 119 cards, **9 calls** if nothing
+is retried (3 per case), 27 worst case, and **$0.056** at the pinned models'
+prices. A twenty-case fallback measurement is therefore well under a dollar.
+
+`*.live.test.ts` runs only under `vitest.live.config.ts`. It has to be
+*excluded* from the default config as well as omitted from it, because the
+name ends in `.test.ts` and `npm test` matched it — which is how this wave
+made three unintended API calls. The exclusion is a safety rule, not tidiness.

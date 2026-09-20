@@ -12,6 +12,13 @@ export default defineConfig({
   },
   test: {
     include: ["src/lib/**/*.test.ts"],
+    // `*.live.test.ts` spends money. It ends in `.test.ts`, so the include
+    // above matches it, and `npm test` made three real API calls the first
+    // time this config and that file existed together. The owner's standing
+    // instruction is that no paid call happens without an estimate first, so
+    // this exclusion is a safety rule, not tidiness: the live tests are run
+    // only by `npm run test:live`, deliberately.
+    exclude: ["**/node_modules/**", "src/lib/**/*.live.test.ts"],
     environment: "node",
     testTimeout: 30000,
   },

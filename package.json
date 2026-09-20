@@ -12,6 +12,7 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "sim": "vite-node --config vitest.config.ts tools/sim.mjs",
     "par": "vite-node --config vitest.config.ts tools/par.mjs",
     "playthrough": "node tools/playthrough.mjs",

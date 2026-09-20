@@ -356,7 +356,7 @@ docs/                ARCHITECTURE.md (write it as the engine lands), plan/
 | 2 | `wave-2-deduction-solver.md` | Tiered solver, grading, explanations, hints | **done** 2026-09-19 |
 | 3 | `wave-3-generator.md` | Fair cases on demand, sim harness | **done** 2026-09-20 |
 | 4 | `wave-4-playable.md` | The whole game with template text, offline | **done** 2026-09-20 (deploy deferred to wave 8 by the owner) |
-| 5 | `wave-5-llm-authoring.md` | Skins, fidelity check, authoring CLI, in-app generation | not started |
+| 5 | `wave-5-llm-authoring.md` | Skins, fidelity check, authoring CLI, in-app generation | **built, unpaid** 2026-09-20 — everything runs against stubs; the fallback-rate measurement needs the owner's go-ahead |
 | 6 | `wave-6-interrogation.md` | Free-text questioning | not started |
 | 7 | `wave-7-art.md` | Portraits, scene art, starter pack | not started |
 | 8 | `wave-8-ship.md` | Tutorial, polish, docs, repo, deploy, catalog | not started |
@@ -366,7 +366,11 @@ docs/                ARCHITECTURE.md (write it as the engine lands), plan/
 
 - **Clue fidelity** is the main technical risk. The parse-back check and the template
   fallback bound it; measure the fallback rate in wave 5 and treat a high rate as a prompt
-  problem.
+  problem. *Wave 5 built the check and proved it can reject — near-miss tests, and prose
+  swapped between two clues with nothing telling the reader to misread it. What is not
+  measured is the rate a real model actually produces, because that costs money and the
+  owner asked for the estimate first: `npm run author -- --estimate` says 3 calls and
+  about $0.02 per case.*
 - **Fun.** Murdle owns the daily logic-mystery. Skiron's case is endless, graded, provably
   fair cases with hints that teach. If wave 4 is not enjoyable with template text alone,
   fix the puzzle before adding the LLM. *Wave 4's verdict is in CLAUDE.md under "How it

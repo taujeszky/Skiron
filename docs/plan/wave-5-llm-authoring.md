@@ -214,3 +214,74 @@ believing it — the tests in this wave's list are written as near-misses
 (wrong slot, wrong room, swapped speaker, `Saw` read as `Together`) for
 exactly that reason.
 
+---
+
+## As built (2026-09-20)
+
+Every task is done except the two that need money. `docs/ARCHITECTURE.md`
+section 11 has the reasoning; this is what changed against the task list and
+what is still open.
+
+### What is open, and why
+
+**The fallback rate is not measured.** The exit criteria ask for it over at
+least twenty cases, and that is a paid batch, which needs the owner's
+go-ahead. `npm run author -- --estimate` makes no calls and prints the number:
+three Normal cases is 119 cards, **9 calls** (3 per case), **$0.056**, so
+twenty cases is roughly 60 calls and under a dollar. The check itself is
+tested against near-misses and is known to be able to reject.
+
+**No pack is shipped.** Task 9's three-case pack is the same batch.
+`static/cases/` does not exist; the home screen's shelf hides itself when
+there is no manifest, and `shipped.test.ts` says so and passes. Point it at a
+real pack and it verifies every case; tampering with one case's recorded
+culprit was caught.
+
+### Changed against the task list
+
+1. **Task 3 — the skin needs hour labels.** The field list omitted them while
+   `Glossary.slotLabel` has existed since wave 1, so without them a dressed
+   case says "Mrs Pellworth was in the orangery at slot 5".
+2. **Task 3 — rule fiction is not a separate field.** A case-file rule *is* a
+   clue, so its fiction is prose for a clue id like any other. One map covers
+   both. The prose may carry the reason ("the causeway floods at high tide, so
+   the sea door was locked from nine until eleven") because the check asks
+   only whether it states the clue and adds no claim about who was where when.
+3. **Task 4 — the writer also gets the engine's template sentence**, not only
+   the canonical form. Decoding `say(p1)|Saw(p0,p3,t4,r2)` before writing is
+   work the writer should not have to do, and every slip is a paid retry. It
+   leaks nothing: that template is what the player sees when prose is missing.
+4. **The registry slot holds field domains, not a schema fragment.** Seventeen
+   hand-written fragments are seventeen chances to drift from the frame's real
+   bounds, from `valid`, and from the parser — inside the one check whose job
+   is noticing that two things disagree. `clues/schema.ts` derives the
+   fragment *and* the parser from one exact mapped type.
+5. **Task 7 is not a change to `explain.ts`.** That file has taken a glossary
+   on every path since wave 2. The work was the eight separate
+   `defaultGlossary(frame)` calls in `game/controller.ts`.
+6. **Call B is part of authoring, not of solving.** The summing-up is written
+   when the case is dressed and stored in the skin, so a shipped pack and an
+   offline player both have it. It runs last, after the check, so the answer
+   is never in the same context as prose being verified.
+
+### What a later wave should know
+
+- **`*.live.test.ts` must be excluded from `vitest.config.ts`, not merely
+  absent from it.** The name ends in `.test.ts`, so `npm test` matched it and
+  made three unintended API calls the first time the file existed. The
+  exclusion is a safety rule.
+- **The parse-back is told the speaker and does not verify it.** A
+  first-person sentence cannot be read without knowing who is talking, and
+  `clue.source` is the engine's — the writer never chooses it. Verifying
+  something the model was just told is the self-confirming check this module
+  is arranged to prevent. Misattribution *is* checked, through `attributedTo`.
+- **`@google/genai` is 58 KB gzipped and is precached** along with every other
+  built asset, which buys nothing, since writing a case needs the network
+  anyway. Excluding it needs a named chunk and SvelteKit owns
+  `chunkFileNames`. Measured and left for wave 8.
+- **Wave 6 inherits the seam.** `Provider`, `stubProvider`, `LlmError` with
+  its scrubber, and the key handling are all wave 6's too; interrogation is a
+  third and fourth call type behind the same two methods, and invariant 8
+  (runtime calls never see the truth or unearned cards) is the same shape of
+  problem as this wave's writer prompt — solve it the same way, in the type
+  of the input rather than in a comment.
