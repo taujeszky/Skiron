@@ -11,5 +11,11 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .wrangler
 
+# Throwaway measurement scripts, and the images the live art test writes out
+# for somebody to look at. CLAUDE.md says engine scratch scripts live in
+# tools/ because vite-node cannot load one from outside the Vite root; this
+# keeps them from being committed by accident.
+tools/_*
+
 # Claude Code internal files
 .claude/

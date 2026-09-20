@@ -201,3 +201,59 @@ describe("the manifest", () => {
     expect(parseManifest(null)).toBeNull();
   });
 });
+
+describe("a pack's pictures", () => {
+  const withArt = (images: string[]) => ({
+    ...(encodePack(packFor(ID, CASE, null, images)) as Record<string, unknown>),
+  });
+
+  it("survives the trip to disk and back", () => {
+    const back = decodePack(JSON.parse(JSON.stringify(withArt(["p0", "p1", "scene"]))));
+    expect(back!.images).toEqual(["p0", "p1", "scene"]);
+  });
+
+  it("reads a pack written before wave 7 as having none", () => {
+    const old = withArt([]);
+    delete old.images;
+    expect(decodePack(JSON.parse(JSON.stringify(old)))!.images).toEqual([]);
+  });
+
+  it("refuses a key that is not a subject", () => {
+    // A key becomes a URL. This is the one place a pack file's contents reach
+    // a path, so it is validated rather than trusted.
+    const back = decodePack(
+      JSON.parse(JSON.stringify(withArt(["p0", "../../secret", "scene/../..", "p999999"]))),
+    );
+    expect(back!.images).toEqual(["p0"]);
+  });
+
+  it("complains about a picture of somebody who is not in the cast", () => {
+    const pack = packFor(ID, CASE, null, ["p0", `p${CASE.frame.people}`]);
+    expect(verifyPack(pack).join(" ")).toContain("the cast is");
+  });
+
+  it("complains about the same picture listed twice", () => {
+    expect(verifyPack(packFor(ID, CASE, null, ["p0", "p0"])).join(" ")).toContain("twice");
+  });
+
+  it("is happy with a picture of everybody and the place", () => {
+    const every = [
+      ...Array.from({ length: CASE.frame.people }, (_, p) => `p${p}`),
+      "scene",
+    ];
+    expect(verifyPack(packFor(ID, CASE, null, every))).toEqual([]);
+  });
+
+  it("counts the pictures in the manifest entry", () => {
+    expect(entryFor(packFor(ID, CASE, null, ["p0", "scene"])).images).toBe(2);
+  });
+
+  it("does not lose the count on the way through the manifest parser", () => {
+    // The trap: `parseManifest` builds its result field by field, so a
+    // `PackEntry` that grows one and is not taught there vanishes silently.
+    // Same shape as `Save.chat` in wave 6 and `parseSettings` before that.
+    const entry = entryFor(packFor(ID, CASE, null, ["p0", "p1", "scene"]));
+    const back = parseManifest({ packVersion: PACK_VERSION, name: "p", cases: [entry] });
+    expect(back!.cases[0].images).toBe(3);
+  });
+});
