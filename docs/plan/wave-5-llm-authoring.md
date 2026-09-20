@@ -22,12 +22,20 @@ README for key handling in Node.
    settings screen that it is used directly from the browser.
 3. **`llm/skin/schema.ts`.** The `CaseSkin` type and JSON schema: `schemaVersion`,
    `language`, title, place, era, `styleGuide`, rooms (name, three-letter code,
-   description), people (name, role, bio, voice, motive, portrait prompt), rule fiction
-   per case-file rule, prose per clue id, nothing-to-say lines per person, briefing,
-   scene prompt, summing-up.
+   description), **hour labels**, people (name, role, bio, voice, motive, portrait
+   prompt), prose per clue id, nothing-to-say lines per person, briefing, scene prompt,
+   summing-up. *Two changes made while building it. **Hour labels** were missing: the
+   `Glossary` has had `slotLabel` since wave 1, so without them a dressed case reads
+   "Mrs Pellworth was in the orangery at slot 5". And **rule fiction is not a separate
+   field** — a case-file rule is a clue, so its fiction is prose for a clue id like any
+   other, and one map covers both.*
 4. **Call A — the writer.** Give it the setting prompt, the floor plan with adjacency and
    grid positions (so the hub becomes a hall and the outdoor room a terrace), cast size,
-   case-file rules and the whole bank in canonical form. **Do not give it the culprit, the
+   case-file rules and the whole bank in canonical form — *and the engine's own template
+   sentence for each clue beside it. The plan said canonical form alone; a writer shown
+   `say(p1)|Saw(p0,p3,t4,r2)` has to decode the clue language before it can write, and
+   every decoding slip becomes a fidelity failure and a paid retry. It leaks nothing: the
+   template is the exact sentence the player sees when prose is unavailable.* **Do not give it the culprit, the
    truth or which statements are lies.** Instruct it: testimony in the speaker's voice,
    facts in an inspector's-notes voice, one clue per passage, and no claim about who was
    where when beyond the clue itself.
