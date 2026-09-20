@@ -44,8 +44,10 @@ export const Count: KindModule<"Count"> = {
   holds: (b, frame, world) => headCount(frame, world, b.r, b.t) === b.k,
   canonical: (b) => `Count(r${b.r},t${b.t},k${b.k})`,
   normalise: (b) => b,
-  // `k` may be 0 — that is `Empty` said the other way, and the two are kept
-  // apart on purpose so the fidelity check can tell the sentences apart.
+  // `k` may be 0 — that is `Empty` said the other way. They stay separate
+  // kinds because they are separate cards, but wave 5 measured what happens
+  // when the fidelity check is asked to tell their SENTENCES apart: every
+  // one of them failed. See `clues/schema.ts#fidelityKey`.
   valid: (b, frame) =>
     isRoom(frame, b.r) &&
     isSlot(frame, b.t) &&
@@ -54,8 +56,9 @@ export const Count: KindModule<"Count"> = {
     b.k <= frame.people,
   topicKeys: (b, frame) => topicKeysFrom(Count.mentions(b, frame), frame),
   mentions: (b) => mentions({ rooms: [b.r], slots: [b.t] }),
-  // A zero count says the same thing as `Empty` and must not say it the same
-  // way: wave 5's fidelity check reads a sentence back to a clue, and two
+  // A zero count says the same thing as `Empty`, and says it differently so a
+  // reader has something to go on. That is a courtesy, not a guarantee — the
+  // check treats the two as one meaning, because they are one. Two
   // kinds sharing a sentence would make that ambiguous.
   template: (b, _frame, g) => {
     const where = `in ${g.roomName(b.r)} at ${g.slotLabel(b.t)}`;

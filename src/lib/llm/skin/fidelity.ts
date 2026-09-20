@@ -23,8 +23,7 @@
  * that says the wrong thing and is required to notice.
  */
 
-import { canonical } from "../../engine/clues";
-import { parseClueBody } from "../../engine/clues/schema";
+import { fidelityKey, parseClueBody } from "../../engine/clues/schema";
 import { clueSentence } from "../../engine/solver/explain";
 import { RNG } from "../../engine/rng";
 import type { CaseFrame, Clue, ClueId, Glossary } from "../../engine/types";
@@ -190,7 +189,10 @@ export async function fidelityPass(
 
   for (const item of items) {
     const clue = back.get(item.id)!;
-    const wanted = canonical(clue.body);
+    // `fidelityKey`, not `canonical`: the question here is whether the
+    // sentence MEANS what the clue means, and one pair of distinct cards
+    // means the same thing. See the note on that function.
+    const wanted = fidelityKey(clue.body);
     const speaker = clue.source.kind === "testimony" ? clue.source.speaker : -1;
     const reading = readings.get(item.id);
 
@@ -220,7 +222,7 @@ export async function fidelityPass(
       continue;
     }
 
-    const got = canonical(body);
+    const got = fidelityKey(body);
     if (got !== wanted) {
       reject(
         "different-clue",

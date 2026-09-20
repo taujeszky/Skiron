@@ -26,7 +26,7 @@ import type {
   FieldDomain,
   JsonSchema,
 } from "../types";
-import { CLUE_KINDS, moduleFor, normalise, validBody } from "./index";
+import { CLUE_KINDS, canonical, moduleFor, normalise, validBody } from "./index";
 
 /** What a field of each domain may be, for this case. */
 export function domainBounds(
@@ -130,13 +130,44 @@ export function parseClueBody(value: unknown, frame: CaseFrame): ClueBody | null
 }
 
 /**
+ * The key the fidelity check compares on.
+ *
+ * `canonical` distinguishes every clue from every other, which is right: two
+ * clues with different canonical forms are different *cards*, and the bank,
+ * the notebook numbering and the solver all depend on that. But the fidelity
+ * check is asking a different question — does this sentence mean what the
+ * clue means — and two distinct cards can mean the same thing.
+ *
+ * There is exactly one such pair. `Count(r,t,0)` and `Empty(r,t)` are the
+ * same claim, and no English sentence can distinguish them, because there is
+ * nothing to distinguish.
+ *
+ * **This was measured, not reasoned about.** Wave 1 made the two templates
+ * deliberately different ("not a soul was in the library" against "nobody was
+ * in the library") on the theory that the check could then tell them apart,
+ * and `KIND_MEANING` told the reader to prefer `Empty` at zero. Over 19
+ * authored cases and 730 cards, **every single `Count` clue with k=0 failed
+ * the check — 12 of 12 — and every other card passed, 718 of 718.** The prose
+ * was right every time; the check was wrong every time. A stylistic
+ * difference between two templates cannot survive a model paraphrasing them,
+ * and it should not have to.
+ */
+export function fidelityKey(body: ClueBody): string {
+  if (body.kind === "Count" && body.k === 0) {
+    return canonical({ kind: "Empty", r: body.r, t: body.t });
+  }
+  return canonical(body);
+}
+
+/**
  * What each kind means, in the words the model is given.
  *
  * Kept beside the schema rather than in a prompt file: it is part of the
  * description of the language, and a prompt that restated it would be a
  * second copy to drift. The wording leans on the distinctions the check has
- * to be able to make — `Saw` against `Together`, `Count 0` against `Empty`,
- * `Stayed` against `At` — because those are where a reader goes wrong.
+ * to be able to make — `Saw` against `Together`, `Stayed` against `At` —
+ * because those are where a reader goes wrong. `Count 0` against `Empty` is
+ * NOT one of them: see `fidelityKey` above, and the measurement in it.
  */
 const KIND_MEANING: Record<ClueKind, string> = {
   At: "the person was in that room at that time",
@@ -154,7 +185,9 @@ const KIND_MEANING: Record<ClueKind, string> = {
   Occupied: "somebody was in that room at that time, without saying who",
   Empty: "nobody was in that room at that time",
   Count:
-    "exactly k people were in that room at that time; use Empty rather than Count with k=0",
+    "exactly k people were in that room at that time. A sentence saying the room was " +
+    "empty may be read as Empty or as Count with k=0 — they mean the same thing and " +
+    "either is accepted",
   Visited: "the person was in that room at some point during the evening",
   NeverVisited: "the person was never in that room at any time",
   AliveAt: "the victim was still alive at that time",

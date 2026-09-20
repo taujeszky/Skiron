@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { frameOf, gridPlan } from "../testkit";
 import type { CaseFrame, ClueBody, ClueKind, JsonSchema } from "../types";
 import { CLUE_KINDS, canonical, clueCanonical, moduleFor } from "./index";
-import { clueBodySchema, domainBounds, kindSchema, parseClueBody } from "./schema";
+import { clueBodySchema, domainBounds, fidelityKey, kindSchema, parseClueBody } from "./schema";
 
 /*
  *   0 1 2     Six rooms, a door on every shared wall, the body in room 4.
@@ -159,7 +159,10 @@ describe("near-misses do not compare equal", () => {
     differs({ kind: "Saw", p: 0, q: 1, t: 0, r: 1 }, { kind: "Together", p: 0, q: 1, t: 0 });
   });
 
-  it("Empty read as Count 0, and the other way round", () => {
+  it("Empty and Count 0 are different CARDS, so their canonical forms differ", () => {
+    // Different cards: the bank holds them separately and the notebook
+    // numbers them separately. But see the block below — they are not a
+    // near-miss, and listing them here as one was this wave's own mistake.
     differs({ kind: "Empty", r: 4, t: 3 }, { kind: "Count", r: 4, t: 3, k: 0 });
   });
 
@@ -179,6 +182,27 @@ describe("near-misses do not compare equal", () => {
 });
 
 describe("what is NOT a near-miss", () => {
+  it("Empty against Count 0, which mean exactly the same thing", () => {
+    // Measured, not argued: over 19 authored cases and 730 cards, every
+    // `Count` clue with k=0 failed the fidelity check — 12 of 12 — and every
+    // other card passed, 718 of 718. The prose was right every time. Wave 1
+    // gave the two kinds deliberately different template sentences on the
+    // theory that a reader could tell them apart, and a model paraphrasing
+    // them cannot, because there is nothing there to tell apart.
+    expect(fidelityKey({ kind: "Count", r: 4, t: 3, k: 0 })).toBe(
+      fidelityKey({ kind: "Empty", r: 4, t: 3 }),
+    );
+    // And only at zero.
+    expect(fidelityKey({ kind: "Count", r: 4, t: 3, k: 1 })).not.toBe(
+      fidelityKey({ kind: "Empty", r: 4, t: 3 }),
+    );
+    // Everything else still compares as itself.
+    for (const body of SAMPLES) {
+      if (body.kind === "Count" && body.k === 0) continue;
+      expect([body.kind, fidelityKey(body)]).toEqual([body.kind, canonical(body)]);
+    }
+  });
+
   it("the two people inside a Saw, which normalises on purpose", () => {
     // Worth a test of its own because it is the trap: `Saw` is symmetric as a
     // formula and who is speaking lives in `source`, so a check built on
