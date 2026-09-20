@@ -11,6 +11,8 @@
   import { emptyStats } from "$lib/game/types";
   import { clearSave, saveStats, storageIsDurable } from "$lib/game/storage";
   import { KEY_NOTICE, forgetKey, storedKey, storeKey } from "$lib/llm/key";
+  import { IMAGE_GRADES, IMAGE_QUALITIES } from "$lib/llm/models";
+  import type { ImageQuality } from "$lib/llm/models";
   import { skins } from "$lib/llm/skinStore";
   import type { ThemeChoice } from "$lib/game/types";
 
@@ -167,6 +169,28 @@
         <p class="warn">That does not look like a Google API key.</p>
       {/if}
     {/if}
+
+    <label class="row">
+      <span>
+        Pictures
+        <small>
+          A face for everybody and one view of the place, drawn when a case is
+          written. Off by default: a cast of five costs around
+          ${(5 * IMAGE_GRADES.fast.price).toFixed(2)} at the cheapest setting,
+          which is roughly ten times what the writing costs.
+        </small>
+        <small>Cases that came with the site are already illustrated, free.</small>
+      </span>
+      <select
+        value={$settings.imageQuality}
+        onchange={(e) =>
+          updateSettings({ imageQuality: e.currentTarget.value as ImageQuality })}
+      >
+        {#each IMAGE_QUALITIES as q (q)}
+          <option value={q}>{IMAGE_GRADES[q].label}</option>
+        {/each}
+      </select>
+    </label>
 
     <h2>Everything on this machine</h2>
     {#if !storageIsDurable()}

@@ -67,6 +67,17 @@ export interface ImageCall {
   model?: string;
   /** "1:1" for portraits, "16:9" for a scene. */
   aspect?: string;
+  /** `ImageConfig.imageSize`: "1K" or "2K". The quality setting picks it. */
+  size?: string;
+  /**
+   * An earlier image to keep this one consistent with — wave 7, task 1.
+   *
+   * **Unverified.** The SDK takes an `inlineData` part alongside the text, and
+   * the models are documented as accepting one, but no image has been
+   * generated through this seam at all, let alone with a reference. The art
+   * runner leaves it off by default and `art/art.ts` says why.
+   */
+  reference?: ImageResult;
   signal?: AbortSignal;
 }
 

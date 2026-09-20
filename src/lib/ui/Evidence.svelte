@@ -18,6 +18,7 @@
   import {
     alreadyAsked,
     answering,
+    artUrls,
     askAbout,
     canConverse,
     cards,
@@ -33,6 +34,7 @@
     topicsFor,
   } from "$lib/game/controller";
   import { askKey } from "$lib/game/types";
+  import { portraitKey } from "$lib/llm/art/prompts";
   import CardView from "./CardView.svelte";
   import Token from "./Token.svelte";
   import { peopleIds, roomIds, slotIndexes, suspectIds } from "./look";
@@ -132,7 +134,7 @@
         onclick={() => questioning.set(asking === s ? null : s)}
         title="Question {glossary.personName(s)}"
       >
-        <Token {frame} person={s} size={20} />
+        <Token {frame} person={s} size={22} art={$artUrls[portraitKey(s)] ?? null} />
         <span>{glossary.personName(s)}</span>
       </button>
     {/each}
@@ -140,6 +142,7 @@
 
   {#if asking !== null}
     <div class="head">
+      <Token {frame} person={asking} size={30} art={$artUrls[portraitKey(asking)] ?? null} />
       <strong>
         Questioning {glossary.personName(asking)}{#if roleOf($game!, asking)}<span class="role"
             >, {roleOf($game!, asking)}</span

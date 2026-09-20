@@ -85,3 +85,82 @@ export const PRICES: Record<string, { in: number; out: number }> = {
   [PARSER_MODEL]: { in: 0.75, out: 3.75 },
   [CHEAP_TEXT_MODEL]: { in: 0.3, out: 2.5 },
 };
+
+/* ------------------------------------------------------------ wave 7: art */
+
+/**
+ * How good the pictures are, and therefore what they cost.
+ *
+ * Zephyr's four-way setting, kept because the names already mean something to
+ * anybody who has used it, with `off` as a real first-class choice rather than
+ * a disabled state: a player with no key, a player who does not want to spend,
+ * and a player on a slow connection all land there, and the game is complete
+ * without a single image. The monogram in `ui/look.ts` is what they see, and
+ * it is drawn from the same palette as every token on the map.
+ *
+ * **This is the only lever between $3.78 and $12.68 for a twelve-case pack**,
+ * which is why it is a setting rather than a constant.
+ */
+export type ImageQuality = "off" | "fast" | "balanced" | "beautiful";
+
+export const IMAGE_QUALITIES: readonly ImageQuality[] = [
+  "off",
+  "fast",
+  "balanced",
+  "beautiful",
+];
+
+export interface ImageGrade {
+  /** Null for `off`, which is the point of `off`. */
+  model: string | null;
+  /** `ImageConfig.imageSize`: "1K" or "2K". */
+  size: string;
+  /** Dollars per image. See the warning below. */
+  price: number;
+  /** For the settings screen. */
+  label: string;
+}
+
+/**
+ * **These prices are the least certain numbers in this file.**
+ *
+ * `ai.google.dev/gemini-api/docs/pricing` on 2026-09-20 gave flash-image as
+ * $0.045-$0.151 "depending on resolution" and pro-image as $0.134 "per 1K/2K
+ * image", without saying which resolution costs which. The split below is the
+ * obvious reading of that range and has **not** been confirmed against a
+ * bill. Note the consequence of taking it at face value: pro at 2K would be
+ * cheaper than flash at 2K, which is unlikely to be true and is exactly the
+ * sort of thing that means the reading is wrong.
+ *
+ * So: re-read the pricing page before the pack batch, and treat
+ * `estimateArt`'s output as an upper bound rather than a quote. A factor of
+ * three on 84 images is the difference between a yes and a no.
+ */
+export const IMAGE_GRADES: Record<ImageQuality, ImageGrade> = {
+  off: { model: null, size: "1K", price: 0, label: "No pictures" },
+  fast: { model: DEFAULT_IMAGE_MODEL, size: "1K", price: 0.045, label: "Fast" },
+  balanced: { model: DEFAULT_IMAGE_MODEL, size: "2K", price: 0.151, label: "Balanced" },
+  beautiful: { model: FALLBACK_IMAGE_MODEL, size: "2K", price: 0.134, label: "Beautiful" },
+};
+
+export function imageGrade(quality: ImageQuality): ImageGrade {
+  return IMAGE_GRADES[quality] ?? IMAGE_GRADES.off;
+}
+
+/** The id `provider.generateImage` should be given, or null for `off`. */
+export function imageModelFor(quality: ImageQuality): string | null {
+  return imageGrade(quality).model;
+}
+
+/**
+ * What `n` images cost at this quality.
+ *
+ * Separate from `PRICES` and from the token estimator on purpose: an image is
+ * billed per picture, so running it through a per-million-tokens calculation
+ * would produce a number that is wrong by orders of magnitude and looks
+ * plausible. `tools/author-case.mjs` keeps the two sums apart for the same
+ * reason.
+ */
+export function imageCost(quality: ImageQuality, n: number): number {
+  return imageGrade(quality).price * n;
+}

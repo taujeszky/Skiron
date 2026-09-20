@@ -14,6 +14,7 @@
  */
 
 import type { Action } from "$lib/engine/generator/investigation";
+import type { ImageQuality } from "$lib/llm/models";
 import type {
   ClueId,
   PersonId,
@@ -72,6 +73,19 @@ export interface Settings {
   confirmAccusation: boolean;
   /** Keep the map's slot scrubber in step with the notebook's column. */
   linkScrubber: boolean;
+  /**
+   * Whether a freshly written case also gets pictures, and how good they are.
+   *
+   * **Off by default, and that is a decision about somebody's money rather
+   * than about taste.** Dressing a case in prose costs about $0.02 and
+   * happens the moment a player types a setting. A cast of five plus a scene
+   * at the cheapest quality is six images at $0.045 — roughly $0.27, more
+   * than ten times the writing, for the same single gesture. Turning that on
+   * silently would be charging somebody an order of magnitude more than they
+   * agreed to for something they never asked for. A shipped pack case is
+   * unaffected either way: its pictures came with it.
+   */
+  imageQuality: ImageQuality;
 }
 
 export function defaultSettings(): Settings {
@@ -81,6 +95,7 @@ export function defaultSettings(): Settings {
     showCanonical: true,
     confirmAccusation: true,
     linkScrubber: true,
+    imageQuality: "off",
   };
 }
 

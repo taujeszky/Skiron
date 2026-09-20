@@ -304,6 +304,9 @@ export function start(): void {
   // wherever IndexedDB is refused this quietly stays an in-memory store, so a
   // case can still be written, just not remembered.
   initSkins();
+  // The same database, a second store. `llm/idb.ts` owns the version, and
+  // the two stores are created together.
+  void import("$lib/llm/artStore").then(({ initArt }) => initArt());
   settings.set(loadSettings());
   stats.set(loadStats());
   applyTheme(get(settings).theme);
@@ -411,12 +414,24 @@ export async function openPackCase(id: string, pack?: string): Promise<boolean> 
   }
   const caseId = parseCaseId(loaded.id);
   if (!caseId) return false;
+  // Set before `showGame`, which is what reads it. A shipped case's pictures
+  // are files that came with the site, so there is nothing to generate and
+  // nothing to pay for — which is the whole point of shipping a pack.
+  const { DEFAULT_PACK } = await import("$lib/llm/packLoader");
+  packArt =
+    loaded.images.length > 0
+      ? { base: `/cases/${pack ?? DEFAULT_PACK}/${loaded.id}`, keys: loaded.images }
+      : null;
   showGame(gameFor(caseId, loaded.case, loaded.skin), undefined);
   return true;
 }
 
 async function open(id: CaseId, save?: Save, dress?: string): Promise<void> {
   cancelLoad();
+  // A generated case has no shipped pictures. Cleared here rather than left
+  // over from whatever was opened before, which would point this case's
+  // portraits at another case's files.
+  packArt = null;
   const run = loadCase(id);
   inFlight = run;
   loading.set({
@@ -525,6 +540,10 @@ function showGame(next: Game, restored: Save | undefined): void {
   flush();
   if (!restored) screen.set("briefing");
   else screen.set(restored.solved ? "summary" : "investigate");
+
+  // Last, and not awaited. The case is already on screen and playable; the
+  // faces catch up. See `startArt`.
+  startArt(next);
 }
 
 /** A fresh `Game` around a case that is already built. */
@@ -631,6 +650,167 @@ export function canDress(): boolean {
   return hasKey();
 }
 
+/* --------------------------------------------------------- wave 7: the art */
+
+/**
+ * Every picture this case has, by subject key, as something `<img src>` takes.
+ *
+ * A store rather than a field of `Game`, for the reason the whole wave turns
+ * on: **art arrives after the case does.** A field would mean setting `game`
+ * again for every portrait that lands, and every screen re-deriving from a
+ * case that has not changed. This moves on its own, and only the two
+ * components that show a face subscribe to it.
+ *
+ * Empty is the normal state, not a failure. It is what every case looked like
+ * through wave 6, what a case with no key looks like, and what a case looks
+ * like for the first ten seconds regardless — so both readers fall back to
+ * `look.ts#monogramUrl`, which needs nothing and cannot fail.
+ */
+export const artUrls: Writable<Record<string, string>> = writable({});
+
+let painting: AbortController | null = null;
+/**
+ * Which art run is the current one.
+ *
+ * A ticket rather than a comparison of case ids, and the difference matters:
+ * reopening the *same* case — abandon it, open it again — leaves the first
+ * run's id matching perfectly, so an id check would let both proceed and pay
+ * for every picture twice. A counter cannot be fooled that way. `startArt`
+ * takes a number and every `await` in it is followed by a check that it is
+ * still the number.
+ */
+let artRun = 0;
+/**
+ * Where a shipped case's pictures are, if it has any.
+ *
+ * Module state beside `inFlight` and `writing`, and for the same reason: it
+ * belongs to the case currently being opened, not to the save and not to the
+ * game object that two other code paths construct.
+ */
+let packArt: { base: string; keys: string[] } | null = null;
+
+/** Injected by tests, exactly as `useAskProvider` is. */
+let artProvider: (() => Provider) | null = null;
+
+export function useArtProvider(make: (() => Provider) | null): void {
+  artProvider = make;
+}
+
+/** Hand every object URL back before dropping the lot. */
+function clearArt(): void {
+  const urls = get(artUrls);
+  artUrls.set({});
+  void import("$lib/llm/artStore").then(({ releaseUrl }) => {
+    // Only the ones this app minted: a shipped case's pictures are ordinary
+    // paths and revoking one would be meaningless rather than harmful.
+    for (const url of Object.values(urls)) if (url.startsWith("blob:")) releaseUrl(url);
+  });
+}
+
+export function cancelArt(): void {
+  painting?.abort();
+  painting = null;
+  // Retires whatever run is in flight, including one that has not reached
+  // its AbortController yet.
+  artRun++;
+}
+
+/**
+ * Put the pictures on screen, and paint the missing ones.
+ *
+ * **Called after `showGame`, never before it, and never awaited.** That is the
+ * one rule here and it is the opposite of `dressCase`, which is deliberately
+ * awaited: names changing under a player mid-sitting would be worse than a
+ * longer wait, whereas a face appearing is not a change to anything the
+ * player has read. A picture must never be a reason the case is not yet on
+ * screen.
+ *
+ * Three sources, in order of how fast they answer: a shipped pack's files,
+ * IndexedDB from an earlier sitting, and finally the model.
+ */
+function startArt(g: Game): void {
+  cancelArt();
+  clearArt();
+  const id = g.text;
+  const mine = ++artRun;
+  const current = () => artRun === mine;
+  const shipped = packArt;
+
+  void (async () => {
+    try {
+      if (shipped) {
+        // Nothing to fetch and nothing to decode: the service worker has
+        // these already and the browser will do the rest.
+        const from: Record<string, string> = {};
+        for (const key of shipped.keys) from[key] = `${shipped.base}/${key}.webp`;
+        artUrls.update((shown) => ({ ...from, ...shown }));
+        return;
+      }
+
+      const { art, imageUrl } = await import("$lib/llm/artStore");
+      const store = art();
+      const had = await store.keys(id);
+      for (const key of had) {
+        const stored = await store.get(id, key);
+        const url = stored ? imageUrl(stored) : null;
+        if (url) artUrls.update((shown) => ({ ...shown, [key]: url }));
+      }
+      // Still the run that is wanted? A player who went back to the desk,
+      // or reopened this very case, must not get the old run's faces.
+      if (!current()) return;
+
+      const quality = get(settings).imageQuality;
+      if (quality === "off" || !g.skin || !hasKey()) return;
+
+      const { artMaterial } = await import("$lib/llm/art/prompts");
+      const { generateArt } = await import("$lib/llm/art/art");
+      const material = artMaterial(g.skin, {
+        victim: g.case.frame.victim,
+      });
+      const have = new Set(had);
+      if (material.subjects.every((s) => have.has(s.key))) return;
+
+      const controller = new AbortController();
+      painting = controller;
+      const provider = artProvider
+        ? artProvider()
+        : await import("$lib/llm/gemini").then(({ geminiProvider }) =>
+            geminiProvider({ key: browserKey() }),
+          );
+
+      // Asked twice, and the second time is the one that matters. Between the
+      // check above and this line are two dynamic imports and a provider
+      // construction, and a player who left in that window would otherwise be
+      // charged for a case nobody is looking at. Found by `art.test.ts`,
+      // which was getting three calls where one was due.
+      if (!current() || controller.signal.aborted) return;
+
+      await generateArt(provider, material, {
+        quality,
+        signal: controller.signal,
+        have: (key) => have.has(key),
+        onImage: async (key, image) => {
+          await store.put(id, key, image);
+          // Shown the moment it exists, rather than when the run finishes:
+          // portraits arrive over tens of seconds and the player is already
+          // reading the briefing. Stored either way — it is paid for, and the
+          // next sitting should not buy it again.
+          if (!current()) return;
+          const url = imageUrl({ mime: image.mime, bytes: image.bytes });
+          if (url) artUrls.update((shown) => ({ ...shown, [key]: url }));
+        },
+      });
+    } catch {
+      // Every failure here costs a picture and nothing else. There is no
+      // error panel for this on purpose: a player who never turned art on
+      // does not want to hear that it did not happen, and one who did still
+      // has a complete, fair, perfectly playable case.
+    } finally {
+      if (painting?.signal.aborted !== false) painting = null;
+    }
+  })();
+}
+
 export function cancelLoad(): void {
   const run = inFlight;
   inFlight = null;
@@ -639,6 +819,7 @@ export function cancelLoad(): void {
   writing = null;
   // A question still in the air belongs to the case being replaced.
   cancelQuestion();
+  cancelArt();
   loading.set(null);
 }
 
@@ -658,6 +839,8 @@ export function abandon(): void {
     });
   }
   cancelQuestion();
+  cancelArt();
+  clearArt();
   game.set(null);
   panel.set({ kind: "none" });
   clearSave();

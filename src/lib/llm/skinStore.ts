@@ -18,6 +18,7 @@
  * card that says "was in undefined at nine".
  */
 
+import { hasIndexedDb, run } from "./idb";
 import type { CaseSkin, SkinFidelity, SkinPerson, SkinRoom } from "./skin/schema";
 import { SKIN_SCHEMA_VERSION } from "./skin/schema";
 
@@ -36,8 +37,6 @@ export interface SkinStore {
   clear(): Promise<void>;
 }
 
-const DB_NAME = "skiron";
-const DB_VERSION = 1;
 const STORE = "skins";
 
 /* ------------------------------------------------------------ validation */
@@ -176,40 +175,12 @@ export function memorySkins(): SkinStore {
   };
 }
 
-function open(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("indexeddb refused to open"));
-  });
-}
-
-function run<T>(
-  mode: IDBTransactionMode,
-  work: (store: IDBObjectStore) => IDBRequest<T>,
-): Promise<T> {
-  return open().then(
-    (db) =>
-      new Promise<T>((resolve, reject) => {
-        const transaction = db.transaction(STORE, mode);
-        const request = work(transaction.objectStore(STORE));
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error ?? new Error("indexeddb refused"));
-        transaction.oncomplete = () => db.close();
-      }),
-  );
-}
-
 export function indexedDbSkins(): SkinStore | null {
-  if (typeof indexedDB === "undefined") return null;
+  if (!hasIndexedDb()) return null;
   return {
     async get(id) {
       try {
-        return parseSkin(await run<unknown>("readonly", (store) => store.get(id)));
+        return parseSkin(await run<unknown>(STORE, "readonly", (store) => store.get(id)));
       } catch {
         return null;
       }
@@ -217,22 +188,22 @@ export function indexedDbSkins(): SkinStore | null {
     async put(id, skin) {
       try {
         // Structured clone handles the object; a skin is plain data by design.
-        await run("readwrite", (store) => store.put(skin, id));
+        await run(STORE, "readwrite", (store) => store.put(skin, id));
       } catch {
         /* a full or blocked database is not a reason to lose the case */
       }
     },
     async remove(id) {
       try {
-        await run("readwrite", (store) => store.delete(id));
+        await run(STORE, "readwrite", (store) => store.delete(id));
       } catch {
         /* as above */
       }
     },
     async list() {
       try {
-        const keys = await run<IDBValidKey[]>("readonly", (store) => store.getAllKeys());
-        const values = await run<unknown[]>("readonly", (store) => store.getAll());
+        const keys = await run<IDBValidKey[]>(STORE, "readonly", (store) => store.getAllKeys());
+        const values = await run<unknown[]>(STORE, "readonly", (store) => store.getAll());
         const out: SkinSummary[] = [];
         keys.forEach((key, i) => {
           const skin = parseSkin(values[i]);
@@ -252,7 +223,7 @@ export function indexedDbSkins(): SkinStore | null {
     },
     async clear() {
       try {
-        await run("readwrite", (store) => store.clear());
+        await run(STORE, "readwrite", (store) => store.clear());
       } catch {
         /* as above */
       }

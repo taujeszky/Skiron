@@ -11,7 +11,8 @@
 <script lang="ts">
   import { difficultyLabel } from "$lib/engine/solver/difficulty";
   import { isRuleKind } from "$lib/engine/types";
-  import { explain, game, goto } from "$lib/game/controller";
+  import { artUrls, explain, game, goto } from "$lib/game/controller";
+  import { portraitKey, SCENE_KEY } from "$lib/llm/art/prompts";
   import Plan from "./Plan.svelte";
   import Token from "./Token.svelte";
   import { suspectIds } from "./look";
@@ -23,6 +24,10 @@
   const skin = $derived(g.skin);
   const rules = $derived(g.case.opening.filter((c) => isRuleKind(c.body.kind)));
   const window = $derived(g.case.opening.filter((c) => !isRuleKind(c.body.kind)));
+
+  // Wave 7. Absent is the normal state — no key, art off, or simply not back
+  // yet — and every branch below renders without it.
+  const scene = $derived($artUrls[SCENE_KEY] ?? null);
 </script>
 
 <div class="screen" data-screen="briefing">
@@ -40,6 +45,15 @@
       </div>
       <button class="btn small" onclick={() => goto("home")}>‹ Desk</button>
     </header>
+
+    {#if scene}
+      <!-- Decoration, and deliberately nowhere near the evidence pane: an
+           image cannot be fidelity-checked, so it must never be somewhere a
+           player would read it as saying something. See `art/prompts.ts`. -->
+      <div class="scene" data-art="scene">
+        <img src={scene} alt="" draggable="false" />
+      </div>
+    {/if}
 
     {#if skin && skin.briefing}
       <p class="briefing">{skin.briefing}</p>
@@ -88,12 +102,17 @@
         <div class="cast">
           {#each suspectIds(frame) as s (s)}
             <span class="who">
-              <Token {frame} person={s} size={22} />
+              <Token {frame} person={s} size={34} art={$artUrls[portraitKey(s)] ?? null} />
               {glossary.personName(s)}
             </span>
           {/each}
           <span class="who victim">
-            <Token {frame} person={frame.victim} size={22} />
+            <Token
+              {frame}
+              person={frame.victim}
+              size={34}
+              art={$artUrls[portraitKey(frame.victim)] ?? null}
+            />
             {glossary.personName(frame.victim)}
           </span>
         </div>
@@ -108,6 +127,23 @@
 </div>
 
 <style>
+  .scene {
+    /* A fixed ratio so the layout does not jump when the image arrives
+       several seconds after the text. */
+    aspect-ratio: 16 / 5;
+    overflow: hidden;
+    border-radius: 10px;
+    border: 1px solid var(--panel-border);
+    margin-bottom: 16px;
+  }
+
+  .scene img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
   .briefing {
     margin: 0 0 18px;
     font-size: 1.02rem;
@@ -212,8 +248,8 @@
   .who {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px 4px 4px;
+    gap: 8px;
+    padding: 3px 12px 3px 3px;
     border-radius: 999px;
     border: 1px solid var(--panel-border);
     background: var(--panel);

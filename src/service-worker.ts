@@ -33,8 +33,42 @@ import { build, files, version } from "$service-worker";
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
 const CACHE = `skiron-${version}`;
-/** Everything Vite built, plus everything in `static/`. */
-const ASSETS = [...build, ...files];
+
+/**
+ * A picture, which is precached by nobody and cached on first view.
+ *
+ * **Task 8 is a subtraction, and this is it.** The plan reads as though
+ * images have to be added to a runtime cache; the truth is the opposite and
+ * was already in effect before a single image existed. `files` is everything
+ * under `static/`, so a `.webp` dropped beside a case file joins the install
+ * payload automatically — and a twelve-case pack would put its entire set of
+ * portraits into the first load, before the visitor has opened one case.
+ *
+ * So they are filtered out of `ASSETS` below and left to the fetch handler,
+ * which caches what it fetches. The cost is that the *first* view of a case
+ * needs the network; the pack's JSON does not, so the case is playable
+ * offline from a cold start either way and only the faces are missing, which
+ * is precisely the thing the game is built to be complete without.
+ *
+ * Check the built `build/service-worker.js` after changing this. That file is
+ * generated and is the only honest evidence the filter did anything.
+ */
+const isImage = (path: string) => /\.(webp|png|jpe?g|avif)$/i.test(path);
+
+/**
+ * Everything Vite built, plus everything in `static/` that is not a picture.
+ *
+ * The icons are the deliberate exception: they are `static/*.png` and the
+ * manifest points at them, so an install that skipped them would give a
+ * blank icon on a home screen with no way to recover offline. They are four
+ * files, against a pack's eighty-odd.
+ */
+const PRECACHE_ANYWAY = new Set(["/favicon.png", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"]);
+
+const ASSETS = [
+  ...build,
+  ...files.filter((path) => !isImage(path) || PRECACHE_ANYWAY.has(path)),
+];
 /** The shell itself, so a cold start with no network has something to open. */
 const SHELL = "/";
 
@@ -72,8 +106,17 @@ sw.addEventListener("fetch", (event) => {
 
       // Content-hashed assets are cache-first, and the second clause is the
       // one that keeps offline generation alive — see the note at the top.
+      //
+      // The third is wave 7's half of the same bargain. A picture is left out
+      // of the install, but it is still immutable — a case's portraits are
+      // named after a case id that stands for one fixed case — so once it has
+      // been fetched there is never a reason to ask again. Network-first would
+      // mean a round trip for every face on every visit, which is the cost
+      // this branch exists to avoid.
       const immutable =
-        ASSETS.includes(url.pathname) || url.pathname.includes("/immutable/");
+        ASSETS.includes(url.pathname) ||
+        url.pathname.includes("/immutable/") ||
+        isImage(url.pathname);
       if (immutable) {
         const cached = await cache.match(url.pathname);
         if (cached) return cached;

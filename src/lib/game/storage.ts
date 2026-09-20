@@ -24,6 +24,8 @@ import {
   emptyDifficultyStats,
   emptyStats,
 } from "./types";
+import { IMAGE_QUALITIES } from "$lib/llm/models";
+import type { ImageQuality } from "$lib/llm/models";
 import type {
   AccusationRecord,
   ChatTurn,
@@ -221,6 +223,12 @@ function stringArray(v: unknown, max: number): string[] | null {
 }
 
 const THEMES: readonly ThemeChoice[] = ["light", "dark", "auto"];
+/**
+ * Imported rather than re-listed, so adding a quality in `models.ts` cannot
+ * leave this validator quietly rejecting it — which would read as the setting
+ * refusing to save.
+ */
+const QUALITIES: readonly ImageQuality[] = IMAGE_QUALITIES;
 const PRESETS: readonly PresetName[] = ["easy", "normal", "hard", "expert"];
 
 /* -------------------------------------------------------------- settings */
@@ -235,6 +243,9 @@ export function parseSettings(v: unknown): Settings {
     showCanonical: bool(v.showCanonical, d.showCanonical),
     confirmAccusation: bool(v.confirmAccusation, d.confirmAccusation),
     linkScrubber: bool(v.linkScrubber, d.linkScrubber),
+    // A save written before wave 7 has no quality at all, and lands on the
+    // default — which is `off`, so an upgrade never starts spending.
+    imageQuality: QUALITIES.find((q) => q === v.imageQuality) ?? d.imageQuality,
   };
 }
 

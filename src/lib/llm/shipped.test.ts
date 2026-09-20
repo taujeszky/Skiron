@@ -58,6 +58,21 @@ describe("every shipped case", () => {
         expect(listed).toEqual([...files].sort());
       });
 
+      it("lists an image count that matches the files on disk", () => {
+        // The manifest's `images` is a number a browser shows without
+        // checking. Derived here from the packs themselves so the two cannot
+        // drift — the same argument as the case list above.
+        const manifest = parseManifest(
+          JSON.parse(readFileSync(join(base, "manifest.json"), "utf8")) as unknown,
+        );
+        for (const entry of manifest!.cases) {
+          const pack = decodePack(
+            JSON.parse(readFileSync(join(base, `${entry.id}.json`), "utf8")) as unknown,
+          );
+          expect(entry.images).toBe(pack!.images.length);
+        }
+      });
+
       for (const file of files) {
         it(`${file} decodes and proves out`, () => {
           const pack = decodePack(JSON.parse(readFileSync(join(base, file), "utf8")) as unknown);
@@ -66,6 +81,35 @@ describe("every shipped case", () => {
           // re-derived from the file rather than read out of it.
           expect(verifyPack(pack!)).toEqual([]);
           expect(`${pack!.id}.json`).toBe(file);
+        });
+
+        it(`${file} has every picture it claims`, () => {
+          // Wave 7's half of "every referenced image exists". `verifyPack`
+          // checks a key names somebody in this cast; only a filesystem can
+          // say whether the file is there, and a listed portrait that 404s
+          // would show a broken image where a monogram belongs.
+          //
+          // Neither half looks at what is *in* the picture. Nothing can —
+          // see `art/prompts.ts`.
+          const pack = decodePack(JSON.parse(readFileSync(join(base, file), "utf8")) as unknown);
+          const dir = join(base, pack!.id);
+          for (const key of pack!.images) {
+            expect(existsSync(join(dir, `${key}.webp`))).toBe(true);
+          }
+        });
+
+        it(`${file} claims every picture it has`, () => {
+          // And the other way round, which is the direction that costs money:
+          // an unlisted file was paid for and is shown to nobody.
+          const pack = decodePack(JSON.parse(readFileSync(join(base, file), "utf8")) as unknown);
+          const dir = join(base, pack!.id);
+          const onDisk = existsSync(dir)
+            ? readdirSync(dir)
+                .filter((name) => name.endsWith(".webp"))
+                .map((name) => name.replace(/\.webp$/, ""))
+                .sort()
+            : [];
+          expect(onDisk).toEqual([...pack!.images].sort());
         });
       }
     });

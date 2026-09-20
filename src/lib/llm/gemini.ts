@@ -105,13 +105,32 @@ export function geminiProvider(options: GeminiOptions): Provider {
       const ai = new GoogleGenAI({ apiKey });
       const signal = deadline(timeoutMs, call.signal);
 
+      // A reference image goes in front of the text, which is the order the
+      // SDK's own multimodal examples use. `inlineData.data` is base64, not
+      // bytes — the same encoding `base64Bytes` undoes on the way back.
+      const asked: { text?: string; inlineData?: { mimeType: string; data: string } }[] = [];
+      if (call.reference) {
+        asked.push({
+          inlineData: {
+            mimeType: call.reference.mime,
+            data: bytesBase64(call.reference.bytes),
+          },
+        });
+      }
+      asked.push({ text: call.prompt });
+
+      const imageConfig = {
+        ...(call.aspect ? { aspectRatio: call.aspect } : {}),
+        ...(call.size ? { imageSize: call.size } : {}),
+      };
+
       try {
         const response = await ai.models.generateContent({
           model: call.model ?? DEFAULT_IMAGE_MODEL,
-          contents: [{ role: "user", parts: [{ text: call.prompt }] }],
+          contents: [{ role: "user", parts: asked }],
           config: {
             responseModalities: ["IMAGE"],
-            ...(call.aspect ? { imageConfig: { aspectRatio: call.aspect } } : {}),
+            ...(Object.keys(imageConfig).length > 0 ? { imageConfig } : {}),
             abortSignal: signal,
           },
         });
@@ -146,6 +165,19 @@ function deadline(ms: number, caller?: AbortSignal): AbortSignal | undefined {
   if (!timeout) return caller;
   if (!caller) return timeout;
   return typeof AbortSignal.any === "function" ? AbortSignal.any([caller, timeout]) : caller;
+}
+
+function bytesBase64(bytes: Uint8Array): string {
+  if (typeof btoa === "function") {
+    let binary = "";
+    // In chunks: `String.fromCharCode(...bytes)` on a megabyte of image blows
+    // the argument limit, and a 2K portrait is comfortably past it.
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(binary);
+  }
+  return Buffer.from(bytes).toString("base64");
 }
 
 function base64Bytes(base64: string): Uint8Array {

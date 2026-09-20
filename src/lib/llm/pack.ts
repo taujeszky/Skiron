@@ -51,6 +51,17 @@ export interface CasePack {
   caseIdVersion: number;
   case: GeneratedCase;
   skin: CaseSkin | null;
+  /**
+   * The subject keys this case ships pictures for — wave 7.
+   *
+   * Keys, not paths and not bytes. A pack file is already the largest thing
+   * the site serves and inlining 84 images as base64 would multiply it by
+   * thirty; the pictures are ordinary files beside the JSON, at
+   * `<pack>/<case id>/<key>.webp`, so the browser caches and decodes them the
+   * way it is good at. This list is what says which exist, so nothing has to
+   * probe for a 404 to find out.
+   */
+  images: string[];
 }
 
 /* ------------------------------------------------------------- encoding */
@@ -139,6 +150,7 @@ export function encodePack(pack: CasePack): unknown {
     caseIdVersion: pack.caseIdVersion,
     case: encodeCase(pack.case),
     skin: pack.skin,
+    images: pack.images,
   };
 }
 
@@ -158,16 +170,37 @@ export function decodePack(value: unknown): CasePack | null {
     case: kase,
     // A skin that will not parse costs the prose, not the case.
     skin: bag.skin === null || bag.skin === undefined ? null : parseSkin(bag.skin),
+    images: imageKeys(bag.images),
   };
 }
 
-export function packFor(id: CaseId, kase: GeneratedCase, skin: CaseSkin | null): CasePack {
+/**
+ * The subject keys off a file, filtered to the ones this code understands.
+ *
+ * A key becomes a URL, so it is validated rather than trusted: `p` and digits
+ * or the word `scene`, nothing else. A pack hand-edited to say `../../secret`
+ * would otherwise be a path traversal dressed as a portrait.
+ */
+function imageKeys(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (key): key is string => typeof key === "string" && /^(p\d{1,2}|scene)$/.test(key),
+  );
+}
+
+export function packFor(
+  id: CaseId,
+  kase: GeneratedCase,
+  skin: CaseSkin | null,
+  images: string[] = [],
+): CasePack {
   return {
     packVersion: PACK_VERSION,
     id: formatCaseId(id),
     caseIdVersion: CASE_ID_VERSION,
     case: kase,
     skin,
+    images,
   };
 }
 
@@ -248,6 +281,27 @@ export function verifyPack(pack: CasePack): string[] {
     }
   }
 
+  // 5. Every picture is of somebody in this cast, or of the place.
+  //
+  // What this can and cannot do: it checks that a key names a real subject,
+  // not that a file exists, because this function is pure and runs in the
+  // browser. `shipped.test.ts` does the filesystem half — the two together
+  // are the plan's "every referenced image exists".
+  //
+  // And neither of them looks at what is *in* the picture. Nothing can. See
+  // `art/prompts.ts`: an image cannot be fidelity-checked, which is why the
+  // defence is in the prompt rather than here.
+  const seen = new Set<string>();
+  for (const key of pack.images) {
+    if (seen.has(key)) problems.push(`${key} is listed twice`);
+    seen.add(key);
+    if (key === "scene") continue;
+    const person = Number(key.slice(1));
+    if (!Number.isInteger(person) || person < 0 || person >= frame.people) {
+      problems.push(`there is a picture for ${key}, and the cast is ${frame.people} people`);
+    }
+  }
+
   return problems;
 }
 
@@ -261,6 +315,8 @@ export interface PackEntry {
   preset: string;
   /** How much of the prose survived the check. Shown to nobody; kept honest. */
   fallbacks: number;
+  /** How many pictures this case ships, so the browser can say "illustrated". */
+  images: number;
 }
 
 export interface PackManifest {
@@ -276,6 +332,7 @@ export function entryFor(pack: CasePack): PackEntry {
     setting: pack.skin?.setting ?? "",
     preset: pack.case.difficulty,
     fallbacks: pack.skin?.fidelity.fallback.length ?? 0,
+    images: pack.images.length,
   };
 }
 
@@ -295,6 +352,13 @@ export function parseManifest(value: unknown): PackManifest | null {
       setting: typeof item.setting === "string" ? item.setting : "",
       preset: typeof item.preset === "string" ? item.preset : "",
       fallbacks: typeof item.fallbacks === "number" ? item.fallbacks : 0,
+      // The trap this line exists to avoid: `parseManifest` builds its result
+      // field by field, so a `PackEntry` that grows one and is not taught
+      // here loses it silently on the way in, with no error anywhere. The
+      // same trap as `Save.chat` in wave 6 and `parseSettings` before that —
+      // whenever a stored shape grows a field, find its parser in the same
+      // commit.
+      images: typeof item.images === "number" ? item.images : 0,
     });
   }
   return {

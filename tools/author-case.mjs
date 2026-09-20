@@ -30,7 +30,15 @@ import { newCaseId, formatCaseId } from "$lib/engine/caseId";
 import { generate } from "$lib/engine/generator/generate";
 import { PRESET_NAMES } from "$lib/engine/solver/difficulty";
 import { geminiProvider } from "$lib/llm/gemini";
-import { WRITER_MODEL, PARSER_MODEL, PRICES } from "$lib/llm/models";
+import {
+  WRITER_MODEL,
+  PARSER_MODEL,
+  PRICES,
+  IMAGE_QUALITIES,
+  imageGrade,
+} from "$lib/llm/models";
+import { artMaterial } from "$lib/llm/art/prompts";
+import { estimateArt, generateArt } from "$lib/llm/art/art";
 import { decodePack, encodePack, entryFor, packFor, verifyPack, PACK_VERSION } from "$lib/llm/pack";
 import { authorSkin, cluesToDress, WRITER_ATTEMPTS } from "$lib/llm/skin/author";
 import { DEFAULT_ATTEMPTS as FIDELITY_ATTEMPTS } from "$lib/llm/skin/fidelity";
@@ -68,6 +76,30 @@ const ESTIMATE = argv.includes("--estimate");
 const DRY = argv.includes("--dry-run");
 const NO_SPEECH = argv.includes("--no-speech");
 const SETTINGS = all("setting");
+
+/* ------------------------------------------------------------ wave 7: art */
+
+const ART = argv.includes("--art");
+const QUALITY = flag("quality", "fast");
+/**
+ * 512 px, as the plan asks.
+ *
+ * catalog-art puts its card art at 560 px q64 and lands at about 7 KB an
+ * image, which is the measurement worth carrying over: a portrait shown at
+ * 34 px in the cast strip and maybe 120 px on a briefing has nothing to gain
+ * from more. The scene is wider, so it gets its own number.
+ */
+const PORTRAIT_PX = Number(flag("portrait-px", 512));
+const SCENE_PX = Number(flag("scene-px", 1024));
+const WEBP_QUALITY = Number(flag("webp-quality", 68));
+/** Leave the victim out — one of the levers on what a pack costs. */
+const SUSPECTS_ONLY = argv.includes("--suspects-only");
+const NO_SCENE = argv.includes("--no-scene");
+
+if (ART && !IMAGE_QUALITIES.includes(QUALITY)) {
+  console.error(`--quality must be one of ${IMAGE_QUALITIES.join(", ")}`);
+  process.exit(1);
+}
 
 const DEFAULT_SETTINGS = [
   "a lighthouse on a sandbar in a winter storm, 1923",
@@ -222,18 +254,90 @@ function estimate(cases) {
   console.log("");
   console.log(`  cost, if nothing is retried    $${cost.toFixed(4)}`);
   console.log(`  cost, worst case               $${(cost * (worst / best)).toFixed(4)}`);
+
+  if (ART) {
+    // Kept apart from the sum above on purpose: an image is billed per
+    // picture, so running it through a per-million-tokens calculation gives a
+    // number that is wrong by orders of magnitude and looks plausible.
+    let images = 0;
+    let art = 0;
+    for (const entry of cases) {
+      const frame = entry.case.frame;
+      // The skin does not exist yet at estimate time, so the subjects are
+      // counted from the cast rather than from portrait prompts. That is the
+      // right way round for a quote: it is the number of pictures the writer
+      // will be asked for, and it cannot be under.
+      const material = fakeMaterial(frame);
+      const out = estimateArt(material, QUALITY);
+      images += out.calls;
+      art += out.cost;
+    }
+    const grade = imageGrade(QUALITY);
+    console.log("");
+    console.log(`  images  ${grade.model} at ${grade.size}`);
+    console.log(`    pictures                     ${images}`);
+    console.log(`    cost at $${grade.price.toFixed(3)} each     $${art.toFixed(2)}`);
+    console.log("");
+    console.log(`  EVERYTHING                     $${(cost + art).toFixed(2)}`);
+    console.log("");
+    console.log("  The per-image price is the least certain number here: the pricing page");
+    console.log("  gives a range without saying which resolution costs which. Re-read it");
+    console.log("  before a large batch and treat this as an upper bound.");
+  }
+
   console.log("");
   console.log("Input token counts are measured from the real prompts. Output counts are");
   console.log("estimated at ~45 tokens a card and are the least certain number here.");
 }
 
+/**
+ * The subjects a case will have, before anybody has written a prompt for them.
+ *
+ * `artMaterial` skips a person with no portrait prompt, which is right at
+ * generation time and wrong for an estimate — so this hands it a placeholder
+ * per person and lets the real `suspectsOnly`/`noScene` levers apply.
+ */
+function fakeMaterial(frame) {
+  const people = Array.from({ length: frame.people }, () => ({
+    name: "",
+    role: "",
+    bio: "",
+    voice: "",
+    motive: "",
+    portrait: "a face",
+  }));
+  return artMaterial(
+    { styleGuide: "", place: "", era: "", title: "", scene: "a place", people },
+    { suspectsOnly: SUSPECTS_ONLY, noScene: NO_SCENE, victim: frame.victim },
+  );
+}
+
 /* ------------------------------------------------------------ the writing */
 
+/**
+ * A real PNG, made locally, so `--dry-run --art` exercises the whole path.
+ *
+ * A stub that returned three arbitrary bytes would walk straight into sharp
+ * and fail there, which would test nothing and look like a bug in the art
+ * pipeline. This is a picture; sharp resizes and re-encodes it exactly as it
+ * will the model's.
+ */
+async function dryImage() {
+  const sharp = (await import("sharp")).default;
+  const bytes = await sharp({
+    create: { width: 256, height: 256, channels: 3, background: { r: 60, g: 70, b: 80 } },
+  })
+    .png()
+    .toBuffer();
+  return { mime: "image/png", bytes: new Uint8Array(bytes) };
+}
+
 /** A stub that plays all three parts, for `--dry-run`. */
-function dryProvider(kase) {
+function dryProvider(kase, image) {
   const clues = cluesToDress(kase);
   const bodies = new Map(clues.map((clue) => [clue.id, clue.body]));
   return stubProvider({
+    image,
     answer: (call) => {
       if (call.user.startsWith("THE SETTING ASKED FOR:")) {
         const frame = kase.frame;
@@ -285,6 +389,62 @@ function dryProvider(kase) {
   });
 }
 
+/* ------------------------------------------------------ wave 7: the images */
+
+/**
+ * Generate this case's pictures and write them beside its JSON.
+ *
+ * Returns the subject keys that actually landed, which is what goes into the
+ * pack — so a portrait the model refused is simply not listed, and the game
+ * shows a monogram for that person without ever asking for a file that is not
+ * there.
+ *
+ * The bytes are converted to WebP on the way to disk. The model returns PNG,
+ * and a 1K PNG portrait is a few hundred kilobytes against a few for WebP;
+ * with eighty-odd pictures in a pack that is the difference between a site
+ * somebody waits for and one they do not.
+ */
+async function paintCase(provider, entry, skin) {
+  const frame = entry.case.frame;
+  const text = formatCaseId(entry.id);
+  const material = artMaterial(skin, {
+    suspectsOnly: SUSPECTS_ONLY,
+    noScene: NO_SCENE,
+    victim: frame.victim,
+  });
+  if (material.subjects.length === 0) return [];
+
+  const sharp = (await import("sharp")).default;
+  const dir = join(OUT, text);
+  mkdirSync(dir, { recursive: true });
+
+  const written = [];
+  const run = await generateArt(provider, material, {
+    quality: QUALITY,
+    onProgress: (done, of) => process.stdout.write(`    picture ${done}/${of}\r`),
+    onImage: async (key, image) => {
+      const width = key === "scene" ? SCENE_PX : PORTRAIT_PX;
+      const webp = await sharp(Buffer.from(image.bytes))
+        .resize({ width, withoutEnlargement: true })
+        .webp({ quality: WEBP_QUALITY })
+        .toBuffer();
+      writeFileSync(join(dir, `${key}.webp`), webp);
+      written.push({ key, bytes: webp.length });
+    },
+  });
+
+  const kb = written.reduce((sum, w) => sum + w.bytes, 0) / 1024;
+  process.stdout.write(
+    `    pictures  ${written.length}/${material.subjects.length}` +
+      `, ${kb.toFixed(0)} KB, ${run.calls} call(s)\n`,
+  );
+  for (const bad of run.failed) console.error(`    ! no picture for ${bad.key}: ${bad.reason}`);
+  return written.map((w) => w.key);
+}
+
+/** Filled in by `--dry-run --art`, so the stub has a picture to hand back. */
+let stubImage;
+
 async function main() {
   console.log(`skiron author — ${COUNT} ${PRESET} case(s)`);
   const cases = buildCases();
@@ -304,9 +464,14 @@ async function main() {
     // but the source itself is a function, called per request.
     const key = loadKey();
     provider = geminiProvider({ key: () => key });
-    console.log(`writing with ${WRITER_MODEL}, checking with ${PARSER_MODEL}\n`);
+    console.log(`writing with ${WRITER_MODEL}, checking with ${PARSER_MODEL}`);
+    if (ART) console.log(`drawing with ${imageGrade(QUALITY).model} at ${imageGrade(QUALITY).size}`);
+    console.log("");
   } else {
     console.log("dry run: no key, no calls, stubbed answers\n");
+    // Built once, here rather than per case: sharp starts a thread pool and
+    // there is no reason to do it four times.
+    if (ART) stubImage = await dryImage();
   }
 
   mkdirSync(OUT, { recursive: true });
@@ -319,7 +484,8 @@ async function main() {
     const text = formatCaseId(entry.id);
     process.stdout.write(`  ${text}  ${entry.setting}\n`);
     try {
-      const out = await authorSkin(provider ?? dryProvider(entry.case), entry.case, {
+      const painter = provider ?? dryProvider(entry.case, stubImage);
+      const out = await authorSkin(painter, entry.case, {
         setting: entry.setting,
         language: LANGUAGE,
         summingUp: !NO_SPEECH,
@@ -335,7 +501,9 @@ async function main() {
       checked += out.skin.fidelity.checked;
       fellBack += out.skin.fidelity.fallback.length;
 
-      const pack = packFor(entry.id, entry.case, out.skin);
+      const images = ART ? await paintCase(painter, entry, out.skin) : [];
+
+      const pack = packFor(entry.id, entry.case, out.skin, images);
       const problems = verifyPack(pack);
       if (problems.length > 0) {
         // A pack that does not verify is not written. It would be a case that
