@@ -22,7 +22,8 @@ import { generate } from "$lib/engine/generator/generate";
 import { newCaseId } from "$lib/engine/caseId";
 import { actionMenuSize } from "$lib/engine/generator/investigation";
 import { PRESET_NAMES } from "$lib/engine/solver/difficulty";
-import { blindPlay } from "$lib/game/player";
+import { ask, examine } from "$lib/engine/generator/bank";
+import { blindPlay, everyAction } from "$lib/game/player";
 
 const argv = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -77,6 +78,8 @@ const run = (name, weight) => {
   const essential = [];
   const pars = [];
   const spent = [];
+  const hit = [];
+  const live = [];
   let stuck = 0;
   for (const c of made) {
     essential.push(c.investigation.actions.length);
@@ -84,6 +87,18 @@ const run = (name, weight) => {
     const rec = blindPlay(c, weight === null ? {} : { leadWeight: weight });
     if (!rec.solved) stuck++;
     spent.push(rec.actions.length);
+    // How often a question pays. `productive` counts the actions that handed
+    // over a card the player did not already hold; `live` is the ceiling —
+    // how many of the menu's questions release anything at all.
+    hit.push(rec.productive / Math.max(1, rec.actions.length));
+    const menu = everyAction(c.frame);
+    live.push(
+      menu.filter((a) =>
+        a.ask === null
+          ? examine(c.bank, Number(a.topic.slice(5))).length > 0
+          : ask(c.bank, a.ask, a.topic).length > 0,
+      ).length / menu.length,
+    );
   }
   const menu = made.length > 0 ? actionMenuSize(made[0].frame) : 0;
   console.log(
@@ -95,13 +110,15 @@ const run = (name, weight) => {
       pad(mean(pars).toFixed(1), 6),
       pad(pct(spent, 0.5), 8) + "/" + pad(pct(spent, 0.9), 4) + "/" + pad(mean(spent).toFixed(1), 7),
       pad(corr(essential, spent).toFixed(2), 8),
+      pad((100 * mean(hit)).toFixed(0) + "%", 7),
+      pad((100 * mean(live)).toFixed(0) + "%", 7),
       pad(stuck, 7),
     ].join(""),
   );
 };
 
 const header =
-  "  preset  cases  menu  essential   par  spent p50/ p90/   mean  r(ess)  stuck";
+  "  preset  cases  menu  essential   par  spent p50/ p90/   mean  r(ess)    hit%   live%  stuck";
 
 if (WEIGHTS.length === 0) {
   console.log(header);
@@ -118,4 +135,10 @@ if (WEIGHTS.length === 0) {
   }
 }
 
+console.log(
+  "hit% is how often a question the player asked paid; live% is how many of",
+);
+console.log(
+  "the menu's questions can pay at all. The gap between them is the search.",
+);
 console.log("stuck must be 0: a case an undirected player cannot finish is a bad case.");

@@ -349,7 +349,7 @@ docs/                ARCHITECTURE.md (write it as the engine lands), plan/
 | 1 | `wave-1-model-and-oracle.md` | Case model, truth simulation, exhaustive solver | **done** 2026-09-19 |
 | 2 | `wave-2-deduction-solver.md` | Tiered solver, grading, explanations, hints | **done** 2026-09-19 |
 | 3 | `wave-3-generator.md` | Fair cases on demand, sim harness | **done** 2026-09-20 |
-| 4 | `wave-4-playable.md` | The whole game with template text, offline | not started |
+| 4 | `wave-4-playable.md` | The whole game with template text, offline | **done** 2026-09-20 (deploy awaits the owner) |
 | 5 | `wave-5-llm-authoring.md` | Skins, fidelity check, authoring CLI, in-app generation | not started |
 | 6 | `wave-6-interrogation.md` | Free-text questioning | not started |
 | 7 | `wave-7-art.md` | Portraits, scene art, starter pack | not started |
@@ -363,11 +363,16 @@ docs/                ARCHITECTURE.md (write it as the engine lands), plan/
   problem.
 - **Fun.** Murdle owns the daily logic-mystery. Skiron's case is endless, graded, provably
   fair cases with hints that teach. If wave 4 is not enjoyable with template text alone,
-  fix the puzzle before adding the LLM.
+  fix the puzzle before adding the LLM. *Wave 4's verdict is in CLAUDE.md under "How it
+  plays": the puzzle stands up, and what drags is the prose — which is wave 5.*
 - **Lying cases may be thin.** If facts alone rarely clear anyone, Hard cases collapse into
   Expert. The sim table will show it; the lever is the mix of physical evidence.
 - **Question grinding.** A player can ask everything. Par is the counterweight; watch
-  whether it is enough.
+  whether it is enough. *Wave 4 measured it: between two fifths and two thirds of
+  questions asked turn something up, and par is now anchored on what an undirected
+  player actually spends rather than on the shortest route. The grind is real at Expert
+  — 146 questions on the menu — and the lever if it needs one is the cast list, not the
+  scoring.*
 - **Generation time** in the browser, mainly the select loop. Keep the exhaustive solver
   out of the loop and measure.
 

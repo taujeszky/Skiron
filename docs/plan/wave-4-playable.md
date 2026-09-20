@@ -163,3 +163,78 @@ counterweight the plan already names is the headless play-through in the Tests s
 drive the real app and play a case to an accusation using only hints. Treat that as the
 wave's main guard rather than a nicety, and prefer asking "what would have to be true for
 this check to fail?" over "does it pass?".
+
+---
+
+## As built (2026-09-20)
+
+All twelve tasks. `src/lib/game/` is the spine — controller, notebook with
+undo, error rules, persistence, stats, rating, and a scripted player —
+`src/lib/ui/` is seventeen Svelte components, and `src/service-worker.ts` is
+the PWA. 527 tests, `npm run check` 0/0 over 373 files. ARCHITECTURE.md
+section 10 has the design; this is what changed about the plan.
+
+### What the plan got wrong, and why
+
+**Par.** Task 10 and `investigation.ts` both said par was a starting point to
+be fitted, and it needed to be: `essentialActions * 1.5` is anchored on the
+shortest route through a case, which only something already holding the answer
+can find. Measured against a scripted player that never sees `essential`, it
+was between three and seven times too tight — 6 on Easy against a real spend
+of 20. It is now `essential * 1.5 + menu * 0.2`, and `npm run par` re-takes
+the measurement. The golden vectors fired on the change and on nothing else,
+which is exactly what they are for.
+
+**The error list was four, and it is six.** Task 5 names an empty cell, a
+movement violation, every suspect cleared and every slot eliminated. Two more
+belong by the same rule — a person pencilled into a room the case file bars
+them from, and more suspects in a room than it holds — because both are
+certainly uncompletable and decidable from the notebook alone. Without them
+the status bar stayed silent about a mark that flatly contradicts a rule
+printed on the briefing screen.
+
+**"Deduce → aim the next question" is not literally true.** The plan's
+description of the intended loop, taken as a scoring rule, makes a player
+measurably worse: a card mentions ground you have already covered, so chasing
+it walks you backwards. The table is in ARCHITECTURE section 10 and the option
+is still in `player.ts` at weight zero so the claim stays checkable.
+
+### What it added
+
+A **blind scripted player** (`game/player.ts`), which par is fitted to and
+which is also the first test of the *bank* rather than of the hints: wave 3's
+player follows `hint()`, and `hint()` is handed the proof set, so nothing
+before this could tell a fair case from a fair case with exactly one route
+through it. It solves every case it is given without ever being told which
+questions matter.
+
+Three tools: `npm run par`, `npm run playthrough` and `npm run offline`, with
+the browser plumbing shared in `tools/cdp.mjs`.
+
+### Exit criteria
+
+- **A full case at each difficulty is playable offline from the installed
+  PWA.** Done and checked by `npm run offline`, which installs the service
+  worker, cuts the network with `Network.emulateNetworkConditions`, reloads
+  from cache and generates a fresh Easy, Normal, Hard and Expert case with
+  nothing to fetch. The thing that makes it work is that the service worker
+  caches `/immutable/` by path as well as by manifest, because the generator's
+  Web Worker chunk is not in the manifest — verified against this build.
+- **The first deploy.** Not done: it is an owner gate. The build is ready and
+  `npm run deploy` is wired.
+- **An honest note on how the game feels.** In CLAUDE.md, under "How it plays".
+
+### What the next wave should know
+
+- **The template names are the thing holding it back**, and wave 5 is the fix.
+  "Suspect C was not in Room 7 at slot 5" is a correct sentence that nobody
+  wants to read forty times. Everything else about the game is in better shape
+  than the words are.
+- **`case.trace` is rendered, never stored as sentences**, so the summing-up
+  re-renders itself in the skin's names for free.
+- **The canonical form is already on every card** (`CardView.svelte`), which
+  is where wave 5's fidelity check hangs its output. The card stays canon; the
+  prose replaces the sentence above it.
+- **`tools/cdp.mjs` exists now.** Wave 5's fidelity work and wave 7's art will
+  both want to look at the real app, and the browser plumbing is done.
+

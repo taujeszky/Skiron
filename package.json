@@ -15,6 +15,7 @@
     "sim": "vite-node --config vitest.config.ts tools/sim.mjs",
     "par": "vite-node --config vitest.config.ts tools/par.mjs",
     "playthrough": "node tools/playthrough.mjs",
+    "offline": "node tools/offline.mjs",
     "inspect": "vite-node --config vitest.config.ts tools/inspect.mjs",
     "postinstall": "node scripts/patch-workerd.cjs",
     "deploy": "npm run build && wrangler pages deploy build --project-name=skiron"

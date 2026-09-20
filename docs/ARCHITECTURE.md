@@ -731,3 +731,186 @@ The preset shapes and tier bands in `difficulty.ts`, the case-file budgets in
 particular is only the plan's guess: fitting it properly means driving `hint.ts`
 with a scripted player, and `hint.ts` solves with no tier cap, so such a player
 reasons at tier 4 even on an Easy case. That is a wave-4 measurement.
+
+---
+
+## 10. The game
+
+Wave 4 puts a player in front of the engine. Three layers, and the split
+between them is the same one the rest of the project uses: `game/` is pure
+TypeScript with no DOM and its own tests, `ui/` is Svelte and is untested by
+convention, and the seam between them is `game/controller.ts` — every store
+the screens share and every action that changes one.
+
+### A save is a case number and nothing else
+
+`GeneratedCase` is full of `Map`s and `Set`s that `JSON.stringify` drops
+without a word, so a "saved case" would round-trip into a case with an empty
+bank and no symptom until the player asked somebody a question. What is stored
+is the case id plus what the player has done to it — collected card ids, the
+notebook's three fields, the actions spent, the hints and the wrong names —
+and `resume` rebuilds the rest. That is invariant 4 doing real work rather
+than being a property nobody depends on.
+
+Two guards, at two levels, because neither can do the other's job:
+
+- `storage.ts` validates the shape of everything it reads back. A value in a
+  browser's storage was written by whatever version of Skiron that person last
+  ran, and `JSON.parse(...) as Save` would hand the game a notebook of the
+  wrong shape. `storage.test.ts` feeds the parsers corrupt input to prove they
+  can say no, and one test at the end feeds them a correct save to prove they
+  are not simply refusing everything.
+- `controller.ts` checks the rebuilt frame against the notebook it was handed,
+  which `storage.ts` cannot: the save is parsed *before* the case is rebuilt,
+  because the case id is inside the save. A notebook that does not fit is not
+  a recoverable save; it is a save from a different house, and it is dropped.
+
+### Par was measured, and the old number was wrong by a factor of four
+
+The plan's formula was `essentialActions * 1.5`, giving 6 on Easy and 13 on
+Expert. It is anchored on the wrong thing: the essential action count is the
+*shortest route* through the case, and the only way to find the shortest route
+is to already hold the answer.
+
+So `game/player.ts` adds a second scripted player. The one wave 3 has follows
+`hint()`, which is handed the proof set; this one never sees `essential`,
+`investigation.actions` or the truth. It reasons from the cards it holds,
+looks at which cells are still open, and asks whatever question bears on the
+most of them. `npm run par` runs it:
+
+```
+preset  menu  essential   par  spent p50/p90/mean   r(ess)  hit%  live%
+easy      65        4.2  19.6     20 /  31 / 20.5    -0.15   64%    49%
+normal    96        5.8  28.5     29 /  47 / 29.6     0.38   58%    44%
+hard     107        7.4  32.9     28 /  49 / 33.2     0.17   55%    41%
+expert   146        9.0  43.3     61 / 109 / 61.4     0.27   43%    37%
+```
+
+Two things fall out. The old par was between three and seven times too tight,
+so nobody would ever have met it. And within a preset the spend barely tracks
+the proof length (r = −0.15 to 0.38) — what drives it is the size of the
+action menu, which is the search space. Hence two terms:
+`essential * 1.5 + menu * 0.2`, the shortest route generously plus a fifth of
+the house. It lands on 20 / 29 / 33 / 42, which sits on the undirected
+player's median for the small presets and below it for the large ones — the
+right shape, because a big case is where reading the cards instead of sweeping
+the grid buys the most.
+
+Still provisional, and honestly so: the scripted player cannot read what a
+card *says*. It is a measured anchor, not a fitted one.
+
+**`hit%` and `live%` are the numbers to watch for feel.** `live%` is how many
+of the menu's questions can pay at all; `hit%` is how many of the ones this
+player actually asked did. Between two fifths and two thirds of questions
+turn something up, which is a reasonable rhythm rather than a slog — and that
+`hit%` exceeds `live%` on every preset is the open-cell heuristic earning its
+place over asking at random.
+
+### The plan's intended loop does not survive being taken literally
+
+The plan describes the loop as "deduce → aim the next question", with
+"somebody was in the library at nine" telling you what to ask about. Scored
+directly — a question gains for every held card that mentions its room, slot
+or person — it makes the player **worse**, monotonically:
+
+```
+lead weight   easy  normal  hard  expert      (mean actions spent)
+          0   19.2    31.1  38.1    57.0
+          1   21.5    33.7  42.7    60.9
+          3   33.8    49.0  46.9    63.9
+          8   46.5    63.8  70.6    83.6
+```
+
+The reason is plain once seen: a card mentions ground you have already
+covered. Chasing it walks you back over what you know, while the open-cell
+score walks you towards what you do not. The useful reading of "aim the next
+question" is aim at what is still *open* — and a card helps with that only
+through what it closes, which the reasoning step has already done by the time
+the question is chosen. The option stays in `player.ts`, defaulting to zero,
+so the claim stays checkable; wave 6 is where it is worth revisiting, because
+a person following up a lead is also following up a *sentence*, and this
+player cannot read.
+
+### The notebook only complains about what cannot be finished
+
+`errors.ts` takes a frame and a notebook and **no world**. That is not a
+convention but the guarantee: a function with no access to the truth cannot
+leak it however it is later edited. The Check is the thing that compares with
+the truth, it costs the player something, and it answers one bit.
+
+Only uncompletable states are flagged. A notebook that is merely *wrong* — the
+player has crossed out the room somebody was really in — is perfectly
+consistent, and flagging it would be the Check for free. What is flagged is a
+notebook no assignment of people to rooms could satisfy, because that is a
+bookkeeping slip rather than a wrong belief.
+
+The plan listed four such states. There are six: the two extra are a person
+pencilled into a room the case file bars them from, and more suspects in a
+room than it holds. Both are certainly uncompletable and decidable from the
+notebook alone, which is the stated principle; leaving them out meant the
+status bar staying silent about a mark that flatly contradicts a rule printed
+on the briefing screen. Capacity counts **suspects only** — the player does
+not know which hour the victim died in, so counting the body could flag a
+notebook that is legal with a corpse in the corner, and suspects alone are a
+lower bound on the living.
+
+The guard on all of it is Signpost's: play a whole correct solve in scrambled
+order and demand silence. Every mark is true, so at no point is the notebook
+uncompletable and the status bar must have nothing to say the whole way
+through — over generated cases, so that real closed doors, barred rooms and
+capacities are in play, since every one of them is something a checker could
+be too eager about.
+
+### The UI, and the one guard that reaches it
+
+The investigation is three panes on a desk and three tabs on a phone, all
+three mounted at every width — the tabs only hide them, because a scroll
+position and a filter are state the player set.
+
+The floor plan's SVG user units **are** the engine's grid units, so nothing in
+the renderer invents a position and the picture cannot disagree with the
+adjacency the solver reasons over. Tokens are solid for somebody the notebook
+has placed and dashed for somebody it merely still allows; the component never
+sees the world except on the summing-up screen, where it is handed one after
+the accusation has already been compared with it.
+
+Everything the game says comes out of one panel — hints, the Check, what a
+search turned up and what it did not — because two would compete, and a player
+who searched a room straight after a hint would lose the hint without noticing.
+
+`tools/playthrough.mjs` is the guard, and the wave's most important one. The
+UI is untested by convention, so between a green suite and a playable game
+there was nothing but somebody having looked; this drives headless Chrome over
+CDP and plays a case through the actual buttons — clicks a difficulty, clicks
+Begin, presses Hint and does exactly what the hint says, then reads the
+surviving suspect and hour **off the notebook's own strikethroughs** and names
+them. It found, on its first run, that auto-notes fired when a card was
+*collected* and the opening is never collected, so a case opened with the
+setting on sat on a blank grid while the hint panel recited deductions the
+setting had promised to make. Looking at its screenshots found three more that
+type-checking could not: a grid whose room chips never wrapped and ran off the
+side of its own pane on every preset, evidence cards with no `flex: none` that
+collapsed into empty strips, and a floor plan stretched into a tall box with a
+small house floating in it.
+
+### Offline means generation, not just loading
+
+Skiron ships no case pack, so "playable offline" means the generator has to
+run with nothing to fetch. That is the thing a service worker gets wrong
+quietly: Vite emits the generator's Web Worker as its own chunk under
+`_app/immutable/workers/`, and SvelteKit's `$service-worker` manifest **does
+not list it** — verified for this build, not merely inherited from Signpost.
+Precaching the manifest alone gives an app that opens offline, shows the desk,
+and hangs forever on "Building a case". The cache-first branch keys off
+`/immutable/` as well as the manifest, so the chunk is cached the first time
+it is fetched.
+
+`npm run offline` is the check: install the worker, take one case online (the
+only thing that fetches the chunk), cut the network, reload from cache, and
+take a fresh case of every difficulty. Its own first version proved the plug
+was out by fetching the app's own URL and was satisfied when the request
+resolved — but a service worker answers same-origin requests from the cache,
+which is its entire job, so that check passed on a live network and failed on
+a dead one. It uses a cross-origin request now, which `service-worker.ts`
+declines to handle and which therefore reaches the network or does not happen.
+

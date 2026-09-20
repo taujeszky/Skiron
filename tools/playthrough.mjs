@@ -24,14 +24,10 @@
  * way past, and `--width`/`--height` set the window, which together are how
  * the phone layout gets looked at without a phone.
  *
- * Gotchas, both learned the hard way in this family of projects:
- * - Chrome's CacheStorage fails when `--user-data-dir` is deeply nested, so
- *   the profile goes somewhere short. Service workers silently fail to install
- *   otherwise, which matters the day this is pointed at a built site.
- * - The dev server is on 1430, not Vite's default and not Signpost's 1420.
+ * The browser plumbing is in `cdp.mjs`, which `offline.mjs` shares. Note that
+ * the dev server is on 1430, not Vite's default and not Signpost's 1420.
  */
-import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { SCREEN, launch, openApp } from "./cdp.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -48,205 +44,18 @@ const SHOTS = flag("shots", null);
 const WIDE = Number(flag("width", 1400));
 const TALL = Number(flag("height", 900));
 
-const CHROMES = [
-  "C:/Program Files/Google/Chrome/Application/chrome.exe",
-  "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-  `${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`,
-];
-
 const PRESET_LABEL = { easy: "Easy", normal: "Normal", hard: "Hard", expert: "Expert" };
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function findChrome() {
-  for (const path of CHROMES) if (path && existsSync(path)) return path;
-  throw new Error(`no Chrome found; looked in:\n  ${CHROMES.join("\n  ")}`);
-}
-
-/* ------------------------------------------------------------------ CDP */
-
-class Cdp {
-  constructor(ws) {
-    this.ws = ws;
-    this.next = 1;
-    this.waiting = new Map();
-    ws.addEventListener("message", (event) => {
-      const msg = JSON.parse(event.data);
-      const pending = this.waiting.get(msg.id);
-      if (!pending) return;
-      this.waiting.delete(msg.id);
-      if (msg.error) pending.reject(new Error(msg.error.message));
-      else pending.resolve(msg.result);
-    });
-  }
-
-  static async connect(url) {
-    const ws = new WebSocket(url);
-    await new Promise((resolve, reject) => {
-      ws.addEventListener("open", resolve, { once: true });
-      ws.addEventListener("error", () => reject(new Error(`cannot reach ${url}`)), {
-        once: true,
-      });
-    });
-    return new Cdp(ws);
-  }
-
-  send(method, params = {}) {
-    const id = this.next++;
-    this.ws.send(JSON.stringify({ id, method, params }));
-    return new Promise((resolve, reject) => {
-      this.waiting.set(id, { resolve, reject });
-      setTimeout(() => {
-        if (this.waiting.delete(id)) reject(new Error(`${method} timed out`));
-      }, 30000);
-    });
-  }
-
-  /** A PNG of the viewport, for looking at rather than for asserting on. */
-  async shot(name) {
-    if (!SHOTS) return;
-    mkdirSync(SHOTS, { recursive: true });
-    const out = await this.send("Page.captureScreenshot", { format: "png" });
-    writeFileSync(`${SHOTS}/${name}.png`, Buffer.from(out.data, "base64"));
-  }
-
-  /** Evaluate in the page and hand back the JSON value. Throws page throws. */
-  async eval(expression) {
-    const out = await this.send("Runtime.evaluate", {
-      // Async, always: half these snippets await a frame before reading the
-      // DOM back, and a non-async wrapper is a syntax error rather than a
-      // quiet difference.
-      expression: `(async () => { ${expression} })()`,
-      returnByValue: true,
-      awaitPromise: true,
-    });
-    if (out.exceptionDetails) {
-      const e = out.exceptionDetails;
-      throw new Error(e.exception?.description ?? e.text);
-    }
-    return out.result.value;
-  }
-}
-
-/* ----------------------------------------------------- the page helpers */
-
-/**
- * Everything the script does to the page, as source injected into it.
- *
- * Kept as one blob rather than a dozen `eval` round trips because a click
- * followed by a read has to happen after Svelte has flushed, and one
- * `requestAnimationFrame` inside the page is both cheaper and more reliable
- * than a sleep out here guessing at it.
- */
-const HELPERS = `
-  window.__sk = {
-    text(el) { return (el.textContent || "").replace(/\\s+/g, " ").trim(); },
-    all(sel) { return [...document.querySelectorAll(sel)]; },
-    find(sel, re) {
-      return window.__sk.all(sel).find((el) => re.test(window.__sk.text(el))) || null;
-    },
-    async settle() {
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    },
-    async click(el) {
-      if (!el) return false;
-      el.click();
-      await window.__sk.settle();
-      return true;
-    },
-  };
-  return true;
-`;
-
-/** What screen is up, judged the way a person would: by what it says. */
-const SCREEN = `
-  const h1 = document.querySelector("h1");
-  const t = h1 ? window.__sk.text(h1) : "";
-  if (document.querySelector(".veil")) return "loading";
-  if (document.querySelector("[data-pane]")) return "investigate";
-  if (t === "Skiron") return "home";
-  if (t === "The case") return "briefing";
-  if (t === "The accusation") return "accuse";
-  if (t === "Solved") return "summary";
-  return t || "?";
-`;
-
-async function waitFor(cdp, want, what, ms = 20000) {
-  const until = Date.now() + ms;
-  let last = "";
-  for (;;) {
-    last = await cdp.eval(SCREEN);
-    if (last === want) return;
-    if (Date.now() > until) {
-      throw new Error(`waited ${ms}ms for ${what}; the screen says "${last}"`);
-    }
-    await sleep(120);
-  }
-}
-
-/* --------------------------------------------------------------- the run */
-
 async function main() {
-  const chrome = findChrome();
-  // Short, per the CacheStorage gotcha in CLAUDE.md.
-  const profile = `${process.env.LOCALAPPDATA ?? "C:/Temp"}/Temp/skpt${PORT}`.replace(
-    /\\\\/g,
-    "/",
-  );
-  const browser = spawn(
-    chrome,
-    [
-      "--headless=new",
-      `--remote-debugging-port=${PORT}`,
-      `--user-data-dir=${profile}`,
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-gpu",
-      `--window-size=${WIDE},${TALL}`,
-      "about:blank",
-    ],
-    { stdio: "ignore" },
-  );
-
-  let cdp = null;
+  const { cdp, close } = await launch({
+    port: PORT,
+    width: WIDE,
+    height: TALL,
+    shots: SHOTS,
+  });
   try {
-    // The debugging port takes a moment to open.
-    let target = null;
-    for (let i = 0; i < 60 && target === null; i++) {
-      await sleep(250);
-      try {
-        const list = await fetch(`http://127.0.0.1:${PORT}/json/list`).then((r) => r.json());
-        target = list.find((t) => t.type === "page") ?? null;
-      } catch {
-        /* not up yet */
-      }
-    }
-    if (!target) throw new Error("Chrome never opened its debugging port");
-
-    cdp = await Cdp.connect(target.webSocketDebuggerUrl);
-    await cdp.send("Runtime.enable");
-    await cdp.send("Page.enable");
-
     console.log(`opening ${URL_BASE}`);
-    await cdp.send("Page.navigate", { url: URL_BASE });
-    // Wait for the app rather than for the load event: the load event fires
-    // before hydration, and every query below needs a mounted app.
-    const until = Date.now() + 30000;
-    for (;;) {
-      try {
-        await cdp.eval(HELPERS);
-        const screen = await cdp.eval(SCREEN);
-        if (screen === "home") break;
-      } catch {
-        /* the page is still coming up */
-      }
-      if (Date.now() > until) {
-        throw new Error(
-          `the app never reached the desk. Is the dev server up? (${URL_BASE})`,
-        );
-      }
-      await sleep(250);
-    }
+    await openApp(cdp, URL_BASE);
 
     const report = await play(cdp);
     console.log("");
@@ -258,16 +67,8 @@ async function main() {
         `${report.hints} hints and ${report.moves} moves.`,
     );
   } finally {
-    if (!KEEP) {
-      try {
-        await cdp?.send("Browser.close");
-      } catch {
-        /* it may already be gone */
-      }
-      browser.kill();
-    } else {
-      console.log(`browser left open on port ${PORT}`);
-    }
+    if (KEEP) console.log(`browser left open on port ${PORT}`);
+    else await close();
   }
 }
 
@@ -288,7 +89,7 @@ async function play(cdp) {
     return true;
   `);
   await cdp.shot("1-desk");
-  await waitFor(cdp, "briefing", "the briefing");
+  await cdp.waitForScreen("briefing", "the briefing");
   await cdp.shot("2-briefing");
   const id = await cdp.eval(`
     const el = document.querySelector(".sub .id");
@@ -303,7 +104,7 @@ async function play(cdp) {
     btn.click();
     return true;
   `);
-  await waitFor(cdp, "investigate", "the investigation");
+  await cdp.waitForScreen("investigate", "the investigation");
   await cdp.shot("3-investigate-fresh");
 
   // 3. Do exactly what the hints say, and nothing else.
@@ -393,7 +194,7 @@ async function play(cdp) {
     btn.click();
     return true;
   `);
-  await waitFor(cdp, "accuse", "the accusation screen");
+  await cdp.waitForScreen("accuse", "the accusation screen");
   await cdp.shot("5-accuse");
   await cdp.eval(`
     const who = ${JSON.stringify(left.people[0].name)};
