@@ -107,6 +107,19 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
   source files, and for surgical edits write a Python script with Write and run it - the
   same trap bites `python -c \"...\"` inside double quotes, where bash substitutes the
   backticks before Python ever sees them.
+- **`vite-node` can only load a script inside the Vite root.** A measurement script in
+  the Claude scratchpad dies with `Cannot find module '/@fs/...'`. Put throwaway engine
+  scripts in `tools/` (name them `_something.mjs` and delete them before committing) and
+  run them with `npx vite-node --config vitest.config.ts tools/_x.mjs`.
+- **An ablation measurement is edit-measure-restore, and `git checkout --` is the wrong
+  restore.** Tuning here often means switching a filter off, generating a few hundred
+  cases and switching it back on; `git checkout -- <file>` takes the file to HEAD and
+  silently destroys any *other* uncommitted work in it. That cost a re-application of a
+  finished fix this wave. Commit first, or copy the file aside and copy it back.
+- **Subagents share this working tree.** A review or design workflow will write scratch
+  files into the repo and will happily overwrite one of yours with the same name. Do not
+  `git add -A` while a workflow is running, tell agents to use a distinctive prefix and
+  to clean up after themselves, and use worktree isolation for any agent that edits code.
 - vitest sometimes swallows `console.log`; write debug output to a file instead.
 - `../index.html` (the portfolio catalog) has very long lines of embedded art and cannot
   be read whole; read it in slices.
