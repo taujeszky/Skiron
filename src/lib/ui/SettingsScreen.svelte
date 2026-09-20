@@ -10,9 +10,45 @@
   import { goto, settings, stats, updateSettings } from "$lib/game/controller";
   import { emptyStats } from "$lib/game/types";
   import { clearSave, saveStats, storageIsDurable } from "$lib/game/storage";
+  import { KEY_NOTICE, forgetKey, storedKey, storeKey } from "$lib/llm/key";
+  import { skins } from "$lib/llm/skinStore";
   import type { ThemeChoice } from "$lib/game/types";
 
   let wiping = $state(false);
+
+  /*
+   * The key is never bound to an input's value.
+   *
+   * `typedKey` holds what is being pasted right now and is cleared the moment
+   * it is stored; `keySet` is the only thing rendered afterwards. So the key
+   * is never in the DOM after the paste, which keeps it out of a screenshot,
+   * out of a saved form and out of anything a browser extension reads off the
+   * page (invariant 9).
+   */
+  let typedKey = $state("");
+  let keySet = $state(false);
+  let keyOops = $state(false);
+
+  $effect(() => {
+    keySet = storedKey() !== null;
+  });
+
+  function saveKey() {
+    if (storeKey(typedKey)) {
+      typedKey = "";
+      keyOops = false;
+      keySet = true;
+    } else {
+      keyOops = true;
+    }
+  }
+
+  function dropKey() {
+    forgetKey();
+    keySet = false;
+    typedKey = "";
+    keyOops = false;
+  }
 
   const themes: { value: ThemeChoice; label: string }[] = [
     { value: "light", label: "Light" },
@@ -25,6 +61,10 @@
     stats.set(blank);
     saveStats(blank);
     clearSave();
+    // The written cases go too. They are the bulkiest thing stored and the
+    // warning says so; the key is deliberately left, because clearing the
+    // record is not the same as signing out.
+    void skins().clear();
     wiping = false;
   }
 </script>
@@ -94,6 +134,40 @@
       />
     </label>
 
+    <h2>Writing the cases</h2>
+    <div class="row keyrow">
+      <span>
+        Google API key
+        <small>{KEY_NOTICE}</small>
+        <small>
+          Without one, cases are played in the engine's own words — which is
+          the whole game, just plainer.
+        </small>
+      </span>
+    </div>
+    {#if keySet}
+      <div class="pair">
+        <span class="pill">A key is set</span>
+        <button class="btn" onclick={dropKey}>Forget it</button>
+      </div>
+    {:else}
+      <div class="pair">
+        <input
+          class="keyin"
+          type="password"
+          bind:value={typedKey}
+          placeholder="AIza…"
+          aria-label="Google API key"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button class="btn" disabled={typedKey.trim() === ""} onclick={saveKey}>Save</button>
+      </div>
+      {#if keyOops}
+        <p class="warn">That does not look like a Google API key.</p>
+      {/if}
+    {/if}
+
     <h2>Everything on this machine</h2>
     {#if !storageIsDurable()}
       <p class="warn">
@@ -103,7 +177,8 @@
     {/if}
     {#if wiping}
       <p class="warn">
-        This clears the record and any case in progress. It cannot be undone.
+        This clears the record, any case in progress and every case the model
+        has written for you. Your key is kept. It cannot be undone.
       </p>
       <div class="pair">
         <button class="btn danger" onclick={wipe}>Yes, clear it</button>
@@ -199,6 +274,26 @@
   .row input {
     margin-top: 3px;
     flex: none;
+  }
+
+  .keyrow {
+    border-bottom: none;
+    padding-bottom: 4px;
+  }
+
+  .keyin {
+    flex: 1;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+
+  .pill {
+    align-self: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    font-size: 0.8rem;
+    color: var(--text-dim);
   }
 
   .warn {

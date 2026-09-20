@@ -78,7 +78,7 @@
   }
 
   const asking = $derived($questioning);
-  const topics = $derived(asking === null ? [] : topicsFor(frame, asking));
+  const topics = $derived(asking === null ? [] : topicsFor(frame, asking, glossary));
   const groups = [
     { key: "slot", title: "About an hour" },
     { key: "person", title: "About somebody" },

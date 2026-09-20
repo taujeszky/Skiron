@@ -88,21 +88,40 @@ export interface Explainer {
   cardLabel(id: ClueId): string;
   clue(clue: Clue): string;
   step(step: Step): string;
+  /** True when this card is showing the engine's words rather than a skin's. */
+  isTemplate(clue: Clue): boolean;
 }
+
+/**
+ * Verified prose by clue id — wave 5's skin, seen from the engine.
+ *
+ * The engine never learns what a skin is: it is handed a map of strings and
+ * knows only that a clue with an entry has one. Anything absent, blank, or
+ * from a case whose prose failed the fidelity check falls through to the
+ * template sentence, which is invariant 6's other half and the reason the
+ * template renderer has to cover every clue type.
+ */
+export type Prose = Readonly<Record<ClueId, string>>;
 
 export function explainer(
   frame: CaseFrame,
   clues: readonly Clue[],
   glossary: Glossary = defaultGlossary(frame),
+  prose: Prose = {},
 ): Explainer {
   const labels = new Map<ClueId, string>();
   clues.forEach((c, i) => labels.set(c.id, `Card ${i + 1}`));
   const cardLabel = (id: ClueId) => labels.get(id) ?? "a card";
+  const written = (clue: Clue): string | null => {
+    const text = prose[clue.id];
+    return typeof text === "string" && text.trim() !== "" ? text.trim() : null;
+  };
   return {
     glossary,
     cardLabel,
-    clue: (clue) => clueSentence(frame, clue, glossary),
+    clue: (clue) => written(clue) ?? clueSentence(frame, clue, glossary),
     step: (step) => render(frame, step, glossary, cardLabel),
+    isTemplate: (clue) => written(clue) === null,
   };
 }
 
@@ -201,6 +220,10 @@ function reason(
   const cards = cited(step.premises, label);
   const who = named(step.premises, g);
   const scene = g.roomName(frame.murderRoom);
+  // The glossary, not the literal: a skin names the victim, and a hint that
+  // says "the victim" beside cards that say "Lord Vane" reads as a bug.
+  // Under `defaultGlossary` this is still exactly "the victim".
+  const victim = g.personName(frame.victim);
 
   switch (step.rule) {
     /* tier 0 — placement */
@@ -225,15 +248,15 @@ function reason(
     case "clue-never-visited":
       return `${cards} keeps them out of a room altogether`;
     case "clue-alive-at":
-      return `${cards} has the victim still alive then`;
+      return `${cards} has ${victim} still alive then`;
     case "clue-death-window":
       return `${cards} narrows down when the murder happened`;
     case "victim-seen-alive":
-      return `${cards} puts the victim in company, and so still alive`;
+      return `${cards} puts ${victim} in company, and so still alive`;
     case "body-at-end":
       return `the body lay in ${scene}, and was still lying there at the end of the evening`;
     case "opportunity":
-      return `the killer and the victim were both in ${scene} when it happened`;
+      return `the killer and ${victim} were both in ${scene} when it happened`;
     case "witness-in-room":
       return `${who} can only have been in ${scene} then, and the one living soul in that room was the killer`;
     case "sealed-after":
@@ -241,7 +264,7 @@ function reason(
     case "sealed-back":
       return `the murder had certainly happened by then, and from then on ${scene} held nobody but the body and the killer`;
     case "victim-not-yet-dead":
-      return `the victim was not yet in ${scene}`;
+      return `${victim} was not yet in ${scene}`;
 
     /* tier 1 — movement */
     case "reach-forward":

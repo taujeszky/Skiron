@@ -38,6 +38,23 @@
   const frame = $derived(g.case.frame);
   const world = $derived(g.case.world);
   const glossary = $derived($explain!.glossary);
+  /*
+   * The written closing speech, when there is one that passed its lint.
+   *
+   * It goes above the proof rather than instead of it. The speech is the
+   * model's; the numbered steps under it are the engine's, are the actual
+   * proof, and stay whatever else happens — a player who wants to check the
+   * reasoning must never have to take a model's word for it.
+   */
+  const speech = $derived(g.skin?.summingUp ?? null);
+
+  /** Blank-line-separated paragraphs, which is how the speech is asked for. */
+  function paragraphs(text: string): string[] {
+    return text
+      .split(/\n\s*\n/)
+      .map((para) => para.trim())
+      .filter((para) => para !== "");
+  }
 
   let slot = $state(0);
   let playing = $state(true);
@@ -119,6 +136,12 @@
 
     <div class="cols">
       <section>
+        {#if speech}
+          <h2>The detective</h2>
+          {#each paragraphs(speech) as para, i (i)}
+            <p class="speech">{para}</p>
+          {/each}
+        {/if}
         <h2>How it was proved</h2>
         <ol class="trace">
           {#each $summingUp as line, i (i)}
@@ -197,6 +220,12 @@
 </div>
 
 <style>
+  .speech {
+    margin: 0 0 12px;
+    line-height: 1.6;
+    font-size: 1.02rem;
+  }
+
   .screen {
     height: 100%;
     overflow-y: auto;

@@ -20,6 +20,7 @@
   const frame = $derived(g.case.frame);
   const glossary = $derived($explain!.glossary);
 
+  const skin = $derived(g.skin);
   const rules = $derived(g.case.opening.filter((c) => isRuleKind(c.body.kind)));
   const window = $derived(g.case.opening.filter((c) => !isRuleKind(c.body.kind)));
 </script>
@@ -28,13 +29,18 @@
   <div class="inner">
     <header>
       <div>
-        <h1>The case</h1>
+        <h1>{skin ? skin.title : "The case"}</h1>
         <p class="sub">
-          {difficultyLabel(g.case.difficulty)} · <span class="id">{g.text}</span>
+          {#if skin && skin.place}{skin.place}{#if skin.era}, {skin.era}{/if} ·
+          {/if}{difficultyLabel(g.case.difficulty)} · <span class="id">{g.text}</span>
         </p>
       </div>
       <button class="btn small" onclick={() => goto("home")}>‹ Desk</button>
     </header>
+
+    {#if skin && skin.briefing}
+      <p class="briefing">{skin.briefing}</p>
+    {/if}
 
     <div class="cols">
       <section class="map">
@@ -99,6 +105,15 @@
 </div>
 
 <style>
+  .briefing {
+    margin: 0 0 18px;
+    font-size: 1.02rem;
+    line-height: 1.6;
+    color: var(--text);
+    border-left: 3px solid var(--accent);
+    padding-left: 14px;
+  }
+
   .screen {
     height: 100%;
     overflow-y: auto;

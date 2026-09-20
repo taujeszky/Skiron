@@ -11,6 +11,7 @@
   import { PRESET_NAMES, PRESETS, difficultyLabel } from "$lib/engine/solver/difficulty";
   import type { PresetName } from "$lib/engine/types";
   import {
+    canDress,
     goto,
     loading,
     newCase,
@@ -18,18 +19,22 @@
     panel,
     resume,
     savedCaseId,
+    setting,
     stats,
   } from "$lib/game/controller";
   import { totalSolved } from "$lib/game/stats";
 
   let typed = $state("");
   let saved = $state<string | null>(null);
+  /** Only offered when there is a key to use; otherwise it would only annoy. */
+  let dressable = $state(false);
 
   // Read once on mount rather than in a derived: the save changes only when
   // this screen is not on, so re-reading it on every keystroke would be work
   // for nothing.
   $effect(() => {
     saved = savedCaseId();
+    dressable = canDress();
   });
 
   const busy = $derived($loading !== null);
@@ -61,6 +66,25 @@
     {/if}
 
     <h2>A new case</h2>
+    {#if dressable}
+      <label class="setting">
+        <span>Set it somewhere</span>
+        <input
+          type="text"
+          bind:value={$setting}
+          disabled={busy}
+          placeholder="a lighthouse in a storm, 1923"
+          aria-label="The setting for the next case"
+          maxlength="200"
+        />
+        <small>
+          The model names the place and the people and writes every clue. The
+          puzzle underneath is the same either way, and every sentence is
+          checked against the evidence before you see it. Leave it blank for
+          the engine's own words.
+        </small>
+      </label>
+    {/if}
     <div class="presets">
       {#each PRESET_NAMES as name (name)}
         <button class="preset" disabled={busy} onclick={() => newCase(name)}>
@@ -196,6 +220,24 @@
     font-size: 0.72rem;
     color: var(--text-dim);
     opacity: 0.85;
+  }
+
+  .setting {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .setting > span {
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  .setting small {
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    line-height: 1.45;
   }
 
   .bynumber {

@@ -33,10 +33,16 @@ import { ask, examine } from "$lib/engine/generator/bank";
 import type { GeneratedCase } from "$lib/engine/generator/generate";
 import { difficultyLabel } from "$lib/engine/solver/difficulty";
 import { defaultGlossary, explainer } from "$lib/engine/solver/explain";
-import type { Explainer } from "$lib/engine/solver/explain";
+import type { Explainer, Prose } from "$lib/engine/solver/explain";
 import { hint, newNotebook, notebookIsSound } from "$lib/engine/solver/hint";
 import type { Hint } from "$lib/engine/solver/hint";
 import { topic } from "$lib/engine/types";
+// Types and one pure function; nothing here pulls the provider SDK into the
+// app bundle, and `glossaryFor` is the only bridge between game and llm.
+import { glossaryFor } from "$lib/llm/skin/glossary";
+import { hasKey, browserKey } from "$lib/llm/key";
+import { initSkins, skins } from "$lib/llm/skinStore";
+import type { CaseSkin } from "$lib/llm/skin/schema";
 import type {
   CaseFrame,
   Clue,
@@ -121,6 +127,17 @@ export interface Game {
   /** The formatted id: the share link and the save key in one. */
   text: string;
   case: GeneratedCase;
+  /**
+   * The LLM's names and prose for this case, or null for the engine's own.
+   *
+   * Not persisted: `flush` writes ids and marks, and a skin is rebuilt from
+   * IndexedDB by case id on resume. Everything that reads a name goes through
+   * `glossaryOf` below rather than building its own, which is the whole of
+   * wave 5's task 7 — eight separate `defaultGlossary(frame)` calls in this
+   * file were how a dressed case would have ended up with cards in the skin's
+   * names and a status bar still saying "Suspect C".
+   */
+  skin: CaseSkin | null;
   history: History;
   /** Cards released by an action, in the order they came. */
   collected: ClueId[];
@@ -215,18 +232,28 @@ export const notebook: Readable<Notebook | null> = derived(
   (g) => g?.history.present ?? null,
 );
 
+/** The one place a glossary is made. Nothing else in this file may call it. */
+function glossaryOf(g: Game): Glossary {
+  return glossaryFor(g.case.frame, g.skin);
+}
+
+/** The verified prose for this case, or nothing, which means templates. */
+function proseOf(g: Game): Prose {
+  return g.skin?.prose ?? {};
+}
+
 export const glossary: Readable<Glossary | null> = derived(game, (g) =>
-  g ? defaultGlossary(g.case.frame) : null,
+  g ? glossaryOf(g) : null,
 );
 
 export const explain: Readable<Explainer | null> = derived(
   [game, cards],
   ([g, list]) =>
-    g ? explainer(g.case.frame, list, defaultGlossary(g.case.frame)) : null,
+    g ? explainer(g.case.frame, list, glossaryOf(g), proseOf(g)) : null,
 );
 
 export const errors: Readable<NotebookError[]> = derived(game, (g) =>
-  g ? findErrors(g.case.frame, g.history.present, defaultGlossary(g.case.frame)) : [],
+  g ? findErrors(g.case.frame, g.history.present, glossaryOf(g)) : [],
 );
 
 export const marked: Readable<number> = derived(game, (g) =>
@@ -262,6 +289,10 @@ export function start(): void {
   if (started) return;
   started = true;
   initStorage();
+  // The skins live in IndexedDB rather than beside the settings; in Node and
+  // wherever IndexedDB is refused this quietly stays an in-memory store, so a
+  // case can still be written, just not remembered.
+  initSkins();
   settings.set(loadSettings());
   stats.set(loadStats());
   applyTheme(get(settings).theme);
@@ -301,9 +332,21 @@ export function resumeClock(): void {
 /* ------------------------------------------------------- loading a case */
 
 let inFlight: Loading | null = null;
+/** Aborts the writing phase, which `loadCase`'s own cancel knows nothing of. */
+let writing: AbortController | null = null;
 
-export async function newCase(preset: PresetName): Promise<void> {
-  await open(newCaseId(preset, randomSeed()));
+/**
+ * What the player typed in the setting box, if anything.
+ *
+ * A store rather than a second argument threaded through every caller: the
+ * box lives on the home screen and `newCase` is called from four places, and
+ * the setting is a property of the next case rather than of the click.
+ */
+export const setting: Writable<string> = writable("");
+
+export async function newCase(preset: PresetName, dressed?: string): Promise<void> {
+  const wanted = (dressed ?? get(setting)).trim();
+  await open(newCaseId(preset, randomSeed()), undefined, wanted);
 }
 
 export async function openCaseText(text: string): Promise<boolean> {
@@ -337,7 +380,7 @@ export async function resume(): Promise<boolean> {
   return get(game) !== null;
 }
 
-async function open(id: CaseId, save?: Save): Promise<void> {
+async function open(id: CaseId, save?: Save, dress?: string): Promise<void> {
   cancelLoad();
   const run = loadCase(id);
   inFlight = run;
@@ -377,6 +420,9 @@ async function open(id: CaseId, save?: Save): Promise<void> {
     id,
     text: formatCaseId(id),
     case: built,
+    // Filled in by `dressCase` once the writing is done, or left null for a
+    // case played in the engine's own words.
+    skin: null,
     // A fresh case starts with whatever the case file already implies — the
     // body's last cell, and anything the movement rules force from it. The
     // headless play-through is what turned this up: auto-notes fired on a
@@ -404,6 +450,13 @@ async function open(id: CaseId, save?: Save): Promise<void> {
     solved: restored?.solved ?? false,
   };
 
+  // The writing phase. It runs before the case is shown, because a case whose
+  // names change under the player halfway through a sitting would be worse
+  // than one that took longer to arrive. Everything here is best-effort: a
+  // model that fails, refuses or times out leaves `skin` null and the case is
+  // played in the engine's own words, which is exactly what wave 4 shipped.
+  next.skin = await dressCase(next, save === undefined ? dress : undefined, id);
+
   game.set(next);
   scrubSlot.set(0);
   selectedCard.set(null);
@@ -423,10 +476,92 @@ async function open(id: CaseId, save?: Save): Promise<void> {
   else screen.set(restored.solved ? "summary" : "investigate");
 }
 
+/* ------------------------------------------------------- the writing phase */
+
+/**
+ * Find or write this case's skin.
+ *
+ * Three ways out, and only one of them involves a model:
+ *
+ * - A case that has been dressed before is read back from IndexedDB, so
+ *   resuming does not pay for the prose twice and works with no key at all.
+ * - A player who typed no setting, or has no key, gets `null` and the engine's
+ *   own sentences. That is not a degraded mode — it is what the whole of wave
+ *   4 shipped as, and the puzzle stands up in it.
+ * - Otherwise the model writes it, and **any** failure still returns `null`.
+ *   A quota error, a safety refusal, a timeout or a malformed answer must not
+ *   cost the player a finished, fair, perfectly playable case.
+ *
+ * A cancel is the one thing treated differently: it aborts the writing, and
+ * the case still opens, because the player asked for the waiting to stop
+ * rather than for the case to be thrown away.
+ */
+async function dressCase(
+  g: Game,
+  wanted: string | undefined,
+  id: CaseId,
+): Promise<CaseSkin | null> {
+  const key = formatCaseId(id);
+
+  const stored = await skins().get(key);
+  if (stored) return stored;
+  if (!wanted || wanted.trim() === "" || !hasKey()) return null;
+
+  const controller = new AbortController();
+  writing = controller;
+  const say = (label: string) =>
+    loading.set({ id, label, cancel: cancelLoad });
+  say("Writing the case…");
+
+  try {
+    const { geminiProvider } = await import("$lib/llm/gemini");
+    const { authorSkin } = await import("$lib/llm/skin/author");
+    const out = await authorSkin(
+      geminiProvider({ key: browserKey() }),
+      g.case,
+      {
+        setting: wanted.trim(),
+        signal: controller.signal,
+        onStage: (stage) => {
+          if (stage.kind === "writing") say("Writing the case…");
+          else if (stage.kind === "checking") {
+            say(`Checking the writing… ${stage.verified} of ${stage.of}`);
+          } else if (stage.kind === "rewriting") {
+            const n = stage.count;
+            say(`Rewriting ${n} ${n === 1 ? "passage" : "passages"}…`);
+          } else say("Writing the summing-up…");
+        },
+      },
+    );
+    await skins().put(key, out.skin);
+    return out.skin;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message !== "cancelled") {
+      // Said once, on the case itself, rather than as an error screen: the
+      // case is fine and the player can play it.
+      panel.set({
+        kind: "error",
+        text: `The case is ready, but could not be written: ${message}`,
+      });
+    }
+    return null;
+  } finally {
+    if (writing === controller) writing = null;
+  }
+}
+
+/** Is there a key, so the home screen can offer the setting box at all? */
+export function canDress(): boolean {
+  return hasKey();
+}
+
 export function cancelLoad(): void {
   const run = inFlight;
   inFlight = null;
   if (run) run.cancel();
+  writing?.abort();
+  writing = null;
   loading.set(null);
 }
 
@@ -470,12 +605,12 @@ export function askAbout(suspect: PersonId, key: TopicKey): void {
 export function examineRoom(room: RoomId): void {
   const g = get(game);
   if (!g || g.solved) return;
-  const gloss = defaultGlossary(g.case.frame);
+  const gloss = glossaryOf(g);
   take(g, examineKey(room), examine(g.case.bank, room), `You search ${gloss.roomName(room)}.`);
 }
 
 function describeAsk(g: Game, suspect: PersonId, key: TopicKey): string {
-  const gloss = defaultGlossary(g.case.frame);
+  const gloss = glossaryOf(g);
   const who = gloss.personName(suspect);
   if (key === topic.motive) return `You ask ${who} about themselves.`;
   const [kind, raw] = key.split(":");
@@ -592,7 +727,7 @@ export function askForHint(): void {
     notebook: g.history.present,
     world: g.case.world,
     essential: g.case.essential,
-    glossary: defaultGlossary(g.case.frame),
+    glossary: glossaryOf(g),
   });
   const shown = get(panel);
   const repeat = shown.kind === "hint" && shown.hint.text === h.text;
@@ -730,7 +865,7 @@ export const summingUp: Readable<string[]> = derived(
   [game, summingUpCards],
   ([g, list]) => {
     if (!g) return [];
-    const ex = explainer(g.case.frame, list, defaultGlossary(g.case.frame));
+    const ex = explainer(g.case.frame, list, glossaryOf(g), proseOf(g));
     return g.case.trace.map((step) => ex.step(step));
   },
 );
@@ -811,8 +946,8 @@ export function flush(): void {
 export function topicsFor(
   frame: CaseFrame,
   suspect: PersonId,
+  gloss: Glossary = defaultGlossary(frame),
 ): { key: TopicKey; label: string; group: "slot" | "person" | "room" | "motive" }[] {
-  const gloss = defaultGlossary(frame);
   const out: {
     key: TopicKey;
     label: string;
