@@ -11,6 +11,8 @@ import { allTrue, couldKnow, distinct, givesAwayAnswer, isOpening } from "./enum
 import { generate } from "./generate";
 import type { GeneratedCase } from "./generate";
 import { isOfferedAction, unreachable } from "./investigation";
+import { apply, hint, newNotebook, notebookIsSound } from "../solver/hint";
+import { bitsOf, fullMask } from "../bits";
 import { falseStatements } from "./lies";
 
 /**
@@ -369,6 +371,85 @@ describe("the proof set is not padded", () => {
           `${c.id.preset}: ${k.id} was not needed`,
         ).toBe(false);
       }
+    }
+  });
+});
+
+
+describe("playing the case through", () => {
+  /**
+   * The test wave 2's review earned.
+   *
+   * Its hint tests asked whether a hint was true and whether the sequence
+   * stopped, and both were — while following every hint left the player
+   * unable to accuse, because the step record could not say which suspect an
+   * elimination had cleared. So the question to ask is not "is the advice
+   * sound" but "does taking it get you anywhere".
+   *
+   * This is that question one level up, for a generated case: start with the
+   * opening, do exactly what the hint says, and see whether the notebook ends
+   * up naming the killer and the hour.
+   */
+  it("following the hints, from the opening, ends in an accusation", () => {
+    for (const c of everyCase()) {
+      const notebook = newNotebook(c.frame);
+      const cards: Clue[] = [...c.opening];
+      const spent: string[] = [];
+      let steps = 0;
+
+      for (;;) {
+        expect(steps++, `${c.id.preset}: the hints never finished`).toBeLessThan(400);
+        const h = hint({
+          frame: c.frame,
+          cards,
+          notebook,
+          world: c.world,
+          essential: c.essential,
+        });
+        // The player never guesses, so a mistake would have to be the hint
+        // system inventing one. Thrown rather than asserted so that the union
+        // narrows and the rest of the loop knows it holds an action.
+        if (h.kind === "mistake") {
+          throw new Error(`${c.id.preset}: the hints claimed a mistake — ${h.text}`);
+        }
+        if (h.kind === "accuse") break;
+        if (h.kind === "deduction") {
+          apply(c.frame, notebook, h.step.conclusion);
+          continue;
+        }
+        // An action: take it, and put whatever it turns up in the notebook.
+        spent.push(`${h.ask ?? "room"}:${h.topic}`);
+        const got =
+          h.ask !== null
+            ? ask(c.bank, h.ask, h.topic)
+            : examine(c.bank, Number(h.topic.slice(5)));
+        const before = cards.length;
+        for (const id of got) {
+          const card = c.bank.cards.get(id);
+          if (card && !cards.some((k) => k.id === card.id)) cards.push(card);
+        }
+        expect(
+          cards.length,
+          `${c.id.preset}: the hint named ${h.topic} and it released nothing new`,
+        ).toBeGreaterThan(before);
+      }
+
+      // Everything crossed out is really false...
+      expect(notebookIsSound(c.frame, notebook, c.world)).toBe(true);
+      // ...and what is left standing is the answer, which is the whole point.
+      const suspects = bitsOf(
+        fullMask(c.frame.suspects) & ~notebook.clearedSuspects,
+      );
+      const slots = bitsOf(fullMask(c.frame.slots) & ~notebook.ruledOutSlots);
+      expect(suspects, `${c.id.preset}: culprit not settled`).toEqual([
+        c.world.culprit,
+      ]);
+      expect(slots, `${c.id.preset}: hour not settled`).toEqual([
+        c.world.murderSlot,
+      ]);
+      // And par is a number in the same world as what it actually took.
+      expect(spent.length).toBeGreaterThan(0);
+      expect(new Set(spent).size).toBeLessThanOrEqual(c.investigation.par * 3);
     }
   });
 });

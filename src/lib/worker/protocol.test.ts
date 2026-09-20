@@ -41,6 +41,23 @@ describe("the generation worker's protocol", () => {
     expect(reply.error).toContain("expert");
   });
 
+  it("is as deterministic through the wire as it is in Node", () => {
+    // The plan asks for a determinism smoke test "in the worker". A real
+    // Worker needs a browser, and there is nothing in `genWorker.ts` but a
+    // postMessage — so what is worth smoking is that the same request really
+    // does produce the same case on the worker's side of the boundary.
+    const id = newCaseId("hard", "twice");
+    const a = runRequest({ token: 1, id });
+    const b = runRequest({ token: 2, id });
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.case.world.loc).toEqual(b.case.world.loc);
+    expect(a.case.essential.map((k) => k.id)).toEqual(
+      b.case.essential.map((k) => k.id),
+    );
+    expect(a.case.tier).toBe(b.case.tier);
+  });
+
   it("echoes the token it was given", () => {
     for (const token of [0, 1, 99]) {
       expect(runRequest({ token, id: newCaseId("easy", "tok") }).token).toBe(
