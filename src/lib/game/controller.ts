@@ -1,0 +1,761 @@
+/**
+ * One spine: every store the game shares, and every action that changes one.
+ *
+ * Components use runes for what is theirs alone — a hovered room, an open
+ * accordion — and read this file for everything two of them have to agree
+ * about. That is Signpost's shape and the reason for it is the same: a screen
+ * that keeps its own copy of the notebook is a screen that can disagree with
+ * the notebook.
+ *
+ * Three rules this file exists to keep, all of them invariants and none of
+ * them enforceable by a component:
+ *
+ * - **The accusation, the Check and the win never go through a solver**
+ *   (invariant 5). `accuse` compares with `case.world` and `checkNotebook`
+ *   calls `notebookIsSound`, which does the same. A deduction bug can make
+ *   the hints useless; it may never hand out or withhold a win.
+ * - **A save holds an id and nothing else about the case** (invariant 4 doing
+ *   real work). `resume` rebuilds from the id and then checks the rebuilt
+ *   frame against the notebook it was handed, because a save written by an
+ *   older Skiron can parse perfectly and still describe a different house.
+ * - **The card list the player sees is the card list the hints count from.**
+ *   `explainer` numbers cards by their position in the list it is given, so
+ *   "Card 3" in a hint means Card 3 in the evidence pane only as long as
+ *   there is one list. There is one list: `cards`.
+ */
+
+import { get, derived, writable } from "svelte/store";
+import type { Readable, Writable } from "svelte/store";
+
+import { formatCaseId, newCaseId, parseCaseId } from "$lib/engine/caseId";
+import type { CaseId } from "$lib/engine/caseId";
+import { ask, examine } from "$lib/engine/generator/bank";
+import type { GeneratedCase } from "$lib/engine/generator/generate";
+import { difficultyLabel } from "$lib/engine/solver/difficulty";
+import { defaultGlossary, explainer } from "$lib/engine/solver/explain";
+import type { Explainer } from "$lib/engine/solver/explain";
+import { hint, newNotebook, notebookIsSound } from "$lib/engine/solver/hint";
+import type { Hint } from "$lib/engine/solver/hint";
+import { topic } from "$lib/engine/types";
+import type {
+  CaseFrame,
+  Clue,
+  ClueId,
+  Glossary,
+  PersonId,
+  PresetName,
+  RoomId,
+  SlotIndex,
+  TopicKey,
+} from "$lib/engine/types";
+import { randomSeed } from "$lib/util/entropy";
+
+import { loadCase } from "./cases";
+import type { Loading } from "./cases";
+import { findErrors } from "./errors";
+import type { NotebookError } from "./errors";
+import {
+  autoNotes,
+  canRedo,
+  canUndo,
+  clearCell,
+  cloneNotebook,
+  newHistory,
+  notebookFits,
+  progress,
+  push,
+  redo,
+  setRoom,
+  toggleCleared,
+  toggleRoom,
+  toggleSlot,
+  undo,
+} from "./notebook";
+import type { History, Notebook } from "./notebook";
+import { rate } from "./rating";
+import type { Rating } from "./rating";
+import { recordAbandon, recordSolve, recordStart } from "./stats";
+import {
+  clearSave,
+  initStorage,
+  loadSave,
+  loadSettings,
+  loadStats,
+  saveSettings,
+  saveStats,
+  writeSave,
+} from "./storage";
+import {
+  askKey,
+  defaultSettings,
+  emptyStats,
+  examineKey,
+} from "./types";
+import type {
+  AccusationRecord,
+  Save,
+  Screen,
+  Settings,
+  Stats,
+} from "./types";
+
+/* ------------------------------------------------------------ the clock */
+
+/**
+ * The only clock the game reads, behind a seam so a test can stop time.
+ *
+ * `engine/` may not touch `Date` at all (invariant 4, and `purity.test.ts`
+ * checks it); the game layer may, and this is the one place it does.
+ */
+let now: () => number = () => Date.now();
+
+export function useClock(fn: () => number): void {
+  now = fn;
+}
+
+/* ------------------------------------------------------------- the state */
+
+export interface Game {
+  id: CaseId;
+  /** The formatted id: the share link and the save key in one. */
+  text: string;
+  case: GeneratedCase;
+  history: History;
+  /** Cards released by an action, in the order they came. */
+  collected: ClueId[];
+  /** Distinct actions taken, in order. */
+  spent: string[];
+  wrong: AccusationRecord[];
+  hints: number;
+  checks: number;
+  /** Milliseconds banked from earlier sessions. */
+  ms: number;
+  /** When this sitting started, or 0 when the clock is stopped. */
+  since: number;
+  solved: boolean;
+}
+
+export interface LoadingState {
+  id: CaseId;
+  /** What the spinner says. */
+  label: string;
+  cancel(): void;
+}
+
+/** What the shared hint/check panel is showing. */
+export type Panel =
+  | { kind: "none" }
+  | { kind: "hint"; hint: Hint }
+  | { kind: "check"; sound: boolean }
+  | { kind: "card"; ids: ClueId[]; from: string }
+  | { kind: "nothing"; from: string }
+  | { kind: "error"; text: string };
+
+export const screen: Writable<Screen> = writable("home");
+export const game: Writable<Game | null> = writable(null);
+export const loading: Writable<LoadingState | null> = writable(null);
+export const panel: Writable<Panel> = writable({ kind: "none" });
+export const settings: Writable<Settings> = writable(defaultSettings());
+export const stats: Writable<Stats> = writable(emptyStats());
+
+/* ------------------------------------------------- what the screens share */
+
+/** The slot the map is scrubbed to. */
+export const scrubSlot: Writable<SlotIndex> = writable(0);
+/** The card whose cells and rooms are lit up, if any. */
+export const selectedCard: Writable<ClueId | null> = writable(null);
+/** The grid cell the keyboard is on. */
+export const focusCell: Writable<{ p: PersonId; t: SlotIndex }> = writable({
+  p: 0,
+  t: 0,
+});
+/** Which pane is up on a phone. */
+export const pane: Writable<"map" | "notebook" | "evidence"> = writable("notebook");
+/** Who is being questioned, or null for the cast list. */
+export const questioning: Writable<PersonId | null> = writable(null);
+/** The evidence pane's filter. -1 means "any". */
+export const evidenceFilter: Writable<{
+  person: PersonId;
+  slot: SlotIndex;
+  room: RoomId;
+}> = writable({ person: -1, slot: -1, room: -1 });
+
+/* ---------------------------------------------------------- the derived */
+
+/**
+ * Every card the player holds: the opening first, then whatever they have
+ * turned up, in the order they turned it up.
+ *
+ * The order is the card numbering. It has to be stable — a player who reads
+ * "Card 3" in a hint and looks for Card 3 in the list must find the same one
+ * — so cards are appended and never sorted.
+ */
+export const cards: Readable<Clue[]> = derived(game, (g) => {
+  if (!g) return [];
+  const out = [...g.case.opening];
+  for (const id of g.collected) {
+    const card = g.case.bank.cards.get(id);
+    if (card) out.push(card);
+  }
+  return out;
+});
+
+export const notebook: Readable<Notebook | null> = derived(
+  game,
+  (g) => g?.history.present ?? null,
+);
+
+export const glossary: Readable<Glossary | null> = derived(game, (g) =>
+  g ? defaultGlossary(g.case.frame) : null,
+);
+
+export const explain: Readable<Explainer | null> = derived(
+  [game, cards],
+  ([g, list]) =>
+    g ? explainer(g.case.frame, list, defaultGlossary(g.case.frame)) : null,
+);
+
+export const errors: Readable<NotebookError[]> = derived(game, (g) =>
+  g ? findErrors(g.case.frame, g.history.present, defaultGlossary(g.case.frame)) : [],
+);
+
+export const marked: Readable<number> = derived(game, (g) =>
+  g ? progress(g.case.frame, g.history.present) : 0,
+);
+
+export const undoable: Readable<boolean> = derived(game, (g) =>
+  g ? canUndo(g.history) : false,
+);
+
+export const redoable: Readable<boolean> = derived(game, (g) =>
+  g ? canRedo(g.history) : false,
+);
+
+/** The rating as it stands. Shown on the summing-up, and only there. */
+export const rating: Readable<Rating | null> = derived(game, (g) =>
+  g
+    ? rate({
+        actions: g.spent.length,
+        par: g.case.investigation.par,
+        hints: g.hints,
+        wrong: g.wrong.length,
+      })
+    : null,
+);
+
+/* ------------------------------------------------------------- start-up */
+
+let started = false;
+
+/** Read what is on disk. Safe to call twice; the second call does nothing. */
+export function start(): void {
+  if (started) return;
+  started = true;
+  initStorage();
+  settings.set(loadSettings());
+  stats.set(loadStats());
+  applyTheme(get(settings).theme);
+}
+
+/** Is there a case waiting to be picked back up? */
+export function savedCaseId(): string | null {
+  const save = loadSave();
+  return save?.id ?? null;
+}
+
+/* ------------------------------------------------------------- the clock */
+
+function elapsed(g: Game): number {
+  return g.ms + (g.since > 0 ? Math.max(0, now() - g.since) : 0);
+}
+
+export function elapsedMs(): number {
+  const g = get(game);
+  return g ? elapsed(g) : 0;
+}
+
+/** Bank the time so far and stop counting. Called when the tab goes away. */
+export function pauseClock(): void {
+  const g = get(game);
+  if (!g || g.since === 0) return;
+  game.set({ ...g, ms: elapsed(g), since: 0 });
+  flush();
+}
+
+export function resumeClock(): void {
+  const g = get(game);
+  if (!g || g.since > 0 || g.solved) return;
+  game.set({ ...g, since: now() });
+}
+
+/* ------------------------------------------------------- loading a case */
+
+let inFlight: Loading | null = null;
+
+export async function newCase(preset: PresetName): Promise<void> {
+  await open(newCaseId(preset, randomSeed()));
+}
+
+export async function openCaseText(text: string): Promise<boolean> {
+  const id = parseCaseId(text);
+  if (id === null) {
+    panel.set({ kind: "error", text: `"${text.trim()}" is not a case number.` });
+    return false;
+  }
+  await open(id);
+  return get(game) !== null;
+}
+
+/**
+ * Pick up where the player left off.
+ *
+ * The save holds a case id and the player's own marks, so this rebuilds the
+ * case and then asks whether the marks still fit it. They can fail to: a save
+ * written by an older Skiron parses perfectly and describes a house with a
+ * different number of rooms in it. A save that does not fit is dropped, which
+ * is the only honest thing to do with it.
+ */
+export async function resume(): Promise<boolean> {
+  const save = loadSave();
+  if (!save) return false;
+  const id = parseCaseId(save.id);
+  if (id === null) {
+    clearSave();
+    return false;
+  }
+  await open(id, save);
+  return get(game) !== null;
+}
+
+async function open(id: CaseId, save?: Save): Promise<void> {
+  cancelLoad();
+  const run = loadCase(id);
+  inFlight = run;
+  loading.set({
+    id,
+    label: `Building a ${difficultyLabel(id.preset)} case…`,
+    cancel: cancelLoad,
+  });
+  panel.set({ kind: "none" });
+
+  let built: GeneratedCase;
+  try {
+    built = await run.case;
+  } catch (err) {
+    if (inFlight === run) {
+      inFlight = null;
+      loading.set(null);
+      const message = err instanceof Error ? err.message : String(err);
+      if (message !== "cancelled") {
+        panel.set({ kind: "error", text: `That case could not be built: ${message}` });
+      }
+    }
+    return;
+  }
+  // A second request started while this one was in the air. Its result wins.
+  if (inFlight !== run) return;
+  inFlight = null;
+  loading.set(null);
+
+  const frame = built.frame;
+  const fits = save !== undefined && notebookFits(frame, save.notebook);
+  const restored = fits ? (save as Save) : undefined;
+  if (save !== undefined && !fits) clearSave();
+
+  const held = new Set(built.bank.cards.keys());
+  const next: Game = {
+    id,
+    text: formatCaseId(id),
+    case: built,
+    history: newHistory(
+      restored ? cloneNotebook(restored.notebook) : newNotebook(frame),
+    ),
+    // A card id from a save that the rebuilt bank does not hold would be a
+    // determinism failure, not a stale save — but dropping it here costs
+    // nothing and keeps a broken one from crashing the evidence pane.
+    collected: restored ? restored.collected.filter((c) => held.has(c)) : [],
+    spent: restored ? restored.spent : [],
+    wrong: restored ? restored.wrong : [],
+    hints: restored ? restored.hints : 0,
+    checks: restored ? restored.checks : 0,
+    ms: restored ? restored.ms : 0,
+    since: restored?.solved ? 0 : now(),
+    solved: restored?.solved ?? false,
+  };
+
+  game.set(next);
+  scrubSlot.set(0);
+  selectedCard.set(null);
+  focusCell.set({ p: 0, t: 0 });
+  questioning.set(null);
+  evidenceFilter.set({ person: -1, slot: -1, room: -1 });
+
+  if (!restored) {
+    stats.update((s) => {
+      const out = recordStart(s, built.difficulty);
+      saveStats(out);
+      return out;
+    });
+  }
+  flush();
+  if (!restored) screen.set("briefing");
+  else screen.set(restored.solved ? "summary" : "investigate");
+}
+
+export function cancelLoad(): void {
+  const run = inFlight;
+  inFlight = null;
+  if (run) run.cancel();
+  loading.set(null);
+}
+
+/**
+ * Put the case down without solving it.
+ *
+ * The streak breaks and the save goes. Giving up is not a wrong answer, so
+ * nothing else in the stats moves — see `stats.ts`.
+ */
+export function abandon(): void {
+  const g = get(game);
+  if (g && !g.solved) {
+    stats.update((s) => {
+      const out = recordAbandon(s, g.case.difficulty);
+      saveStats(out);
+      return out;
+    });
+  }
+  game.set(null);
+  panel.set({ kind: "none" });
+  clearSave();
+  screen.set("home");
+}
+
+/* ----------------------------------------------------------- the actions */
+
+/**
+ * Ask a suspect about something.
+ *
+ * A repeat is free: the question has been paid for, the answer has not
+ * changed, and charging for it again would teach the player to keep notes on
+ * what they had already asked instead of playing. The interface shows an
+ * asked question as asked for the same reason.
+ */
+export function askAbout(suspect: PersonId, key: TopicKey): void {
+  const g = get(game);
+  if (!g || g.solved) return;
+  take(g, askKey(suspect, key), ask(g.case.bank, suspect, key), describeAsk(g, suspect, key));
+}
+
+export function examineRoom(room: RoomId): void {
+  const g = get(game);
+  if (!g || g.solved) return;
+  const gloss = defaultGlossary(g.case.frame);
+  take(g, examineKey(room), examine(g.case.bank, room), `You search ${gloss.roomName(room)}.`);
+}
+
+function describeAsk(g: Game, suspect: PersonId, key: TopicKey): string {
+  const gloss = defaultGlossary(g.case.frame);
+  const who = gloss.personName(suspect);
+  if (key === topic.motive) return `You ask ${who} about themselves.`;
+  const [kind, raw] = key.split(":");
+  const n = Number(raw);
+  if (kind === "slot") return `You ask ${who} about ${gloss.slotLabel(n)}.`;
+  if (kind === "room") return `You ask ${who} about ${gloss.roomName(n)}.`;
+  return `You ask ${who} about ${gloss.personName(n)}.`;
+}
+
+function take(g: Game, key: string, released: readonly ClueId[], from: string): void {
+  const spent = g.spent.includes(key) ? g.spent : [...g.spent, key];
+  const collected = [...g.collected];
+  const fresh: ClueId[] = [];
+  for (const id of released) {
+    if (collected.includes(id)) continue;
+    if (!g.case.bank.cards.has(id)) continue;
+    collected.push(id);
+    fresh.push(id);
+  }
+
+  let history = g.history;
+  if (fresh.length > 0 && get(settings).autoNotes) {
+    const held = [...g.case.opening];
+    for (const id of collected) {
+      const card = g.case.bank.cards.get(id);
+      if (card) held.push(card);
+    }
+    history = push(history, autoNotes(g.case.frame, held, history.present));
+  }
+
+  game.set({ ...g, spent, collected, history });
+  panel.set(
+    released.length === 0
+      ? { kind: "nothing", from }
+      : { kind: "card", ids: [...released], from },
+  );
+  flush();
+}
+
+/** Has this question already been put? For greying out the cast list. */
+export function alreadyAsked(key: string): boolean {
+  return get(game)?.spent.includes(key) ?? false;
+}
+
+/* ---------------------------------------------------------- the notebook */
+
+function edit(fn: (frame: CaseFrame, n: Notebook) => Notebook): void {
+  const g = get(game);
+  if (!g || g.solved) return;
+  const next = push(g.history, fn(g.case.frame, g.history.present));
+  if (next === g.history) return;
+  game.set({ ...g, history: next });
+  flush();
+}
+
+export function markRoom(p: PersonId, t: SlotIndex, r: RoomId): void {
+  edit((_, n) => toggleRoom(n, p, t, r));
+}
+
+export function placeIn(p: PersonId, t: SlotIndex, r: RoomId): void {
+  edit((frame, n) => setRoom(frame, n, p, t, r));
+}
+
+export function wipeCell(p: PersonId, t: SlotIndex): void {
+  edit((_, n) => clearCell(n, p, t));
+}
+
+export function clearSuspect(s: PersonId): void {
+  edit((_, n) => toggleCleared(n, s));
+}
+
+export function ruleOutSlot(t: SlotIndex): void {
+  edit((_, n) => toggleSlot(n, t));
+}
+
+export function undoMark(): void {
+  const g = get(game);
+  if (!g) return;
+  const next = undo(g.history);
+  if (next === g.history) return;
+  game.set({ ...g, history: next });
+  flush();
+}
+
+export function redoMark(): void {
+  const g = get(game);
+  if (!g) return;
+  const next = redo(g.history);
+  if (next === g.history) return;
+  game.set({ ...g, history: next });
+  flush();
+}
+
+export function resetMarks(): void {
+  edit((frame) => newNotebook(frame));
+}
+
+/* -------------------------------------------------------- hints and check */
+
+/**
+ * A hint, and what it costs.
+ *
+ * It is charged once per *distinct* hint. A player who presses H twice
+ * without having done anything in between gets the same sentence, and
+ * charging for it again would only be charging them for not trusting the
+ * interface.
+ */
+export function askForHint(): void {
+  const g = get(game);
+  if (!g || g.solved) return;
+  const h = hint({
+    frame: g.case.frame,
+    cards: get(cards),
+    notebook: g.history.present,
+    world: g.case.world,
+    essential: g.case.essential,
+    glossary: defaultGlossary(g.case.frame),
+  });
+  const shown = get(panel);
+  const repeat = shown.kind === "hint" && shown.hint.text === h.text;
+  if (!repeat) game.set({ ...g, hints: g.hints + 1 });
+  panel.set({ kind: "hint", hint: h });
+  flush();
+}
+
+/**
+ * The Check: one bit, straight from the truth (invariant 5).
+ *
+ * It does not say which cell, and it must not: the cell is the answer, one
+ * square at a time.
+ */
+export function checkNotebook(): void {
+  const g = get(game);
+  if (!g) return;
+  const sound = notebookIsSound(g.case.frame, g.history.present, g.case.world);
+  game.set({ ...g, checks: g.checks + 1 });
+  panel.set({ kind: "check", sound });
+  flush();
+}
+
+export function closePanel(): void {
+  panel.set({ kind: "none" });
+}
+
+/* ------------------------------------------------------- the accusation */
+
+export interface Verdict {
+  right: boolean;
+  culprit: PersonId;
+  slot: SlotIndex;
+}
+
+/**
+ * Name the killer and the hour.
+ *
+ * Compared with the stored truth and with nothing else. No solver is
+ * consulted, so no deduction bug can invent a win or refuse a real one
+ * (invariant 5). `case.answer` says the same thing and is not used, because
+ * `world` is the thing the simulation actually produced and `answer` is a
+ * copy of it.
+ */
+export function accuse(culprit: PersonId, slot: SlotIndex): Verdict {
+  const g = get(game);
+  if (!g) return { right: false, culprit, slot };
+  const right =
+    culprit === g.case.world.culprit && slot === g.case.world.murderSlot;
+
+  if (!right) {
+    game.set({ ...g, wrong: [...g.wrong, { culprit, slot }] });
+    flush();
+    return { right, culprit, slot };
+  }
+
+  const ms = elapsed(g);
+  const solvedGame: Game = { ...g, solved: true, ms, since: 0 };
+  game.set(solvedGame);
+  stats.update((s) => {
+    const out = recordSolve(s, {
+      difficulty: g.case.difficulty,
+      actions: g.spent.length,
+      par: g.case.investigation.par,
+      ms,
+      hints: g.hints,
+      wrong: g.wrong.length,
+    });
+    saveStats(out);
+    return out;
+  });
+  flush();
+  screen.set("summary");
+  return { right, culprit, slot };
+}
+
+/**
+ * The cards the summing-up numbers against.
+ *
+ * The trace names cards from the proof set, and a player need not have
+ * collected all of them — so the list is what they hold, followed by
+ * whatever the proof used and they never found. Their own cards keep the
+ * numbers they had all game, and every id in the trace resolves to something.
+ */
+export const summingUpCards: Readable<Clue[]> = derived(
+  [game, cards],
+  ([g, held]) => {
+    if (!g) return [];
+    const have = new Set(held.map((c) => c.id));
+    return [...held, ...g.case.clues.filter((c) => !have.has(c.id))];
+  },
+);
+
+export const summingUp: Readable<string[]> = derived(
+  [game, summingUpCards],
+  ([g, list]) => {
+    if (!g) return [];
+    const ex = explainer(g.case.frame, list, defaultGlossary(g.case.frame));
+    return g.case.trace.map((step) => ex.step(step));
+  },
+);
+
+/* -------------------------------------------------------------- settings */
+
+export function updateSettings(patch: Partial<Settings>): void {
+  settings.update((s) => {
+    const out = { ...s, ...patch };
+    saveSettings(out);
+    if (patch.theme !== undefined) applyTheme(out.theme);
+    return out;
+  });
+}
+
+let themeWatcher: MediaQueryList | null = null;
+
+/**
+ * Light, dark or whatever the machine says.
+ *
+ * `app.css` keys everything off `data-theme` on the root element, so "auto"
+ * is resolved here rather than by a media query in the stylesheet — and the
+ * listener stays attached, so a player who changes their system theme
+ * mid-case sees it change under them.
+ */
+export function applyTheme(choice: Settings["theme"]): void {
+  if (typeof document === "undefined") return;
+  const media =
+    typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null;
+  const resolve = () => {
+    const dark = choice === "dark" || (choice === "auto" && (media?.matches ?? false));
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  };
+  if (themeWatcher) themeWatcher.onchange = null;
+  themeWatcher = choice === "auto" ? media : null;
+  if (themeWatcher) themeWatcher.onchange = resolve;
+  resolve();
+}
+
+/* ---------------------------------------------------------- persistence */
+
+/** Write the save. Called after anything that changes it; cheap enough to be. */
+export function flush(): void {
+  const g = get(game);
+  if (!g) return;
+  const save: Save = {
+    id: g.text,
+    collected: g.collected,
+    spent: g.spent,
+    notebook: g.history.present,
+    wrong: g.wrong,
+    hints: g.hints,
+    checks: g.checks,
+    ms: elapsed(g),
+    solved: g.solved,
+  };
+  writeSave(save);
+}
+
+/* ------------------------------------------------------------ the extras */
+
+/** Every topic a suspect can be asked about, in the order the cast list shows. */
+export function topicsFor(
+  frame: CaseFrame,
+  suspect: PersonId,
+): { key: TopicKey; label: string; group: "slot" | "person" | "room" | "motive" }[] {
+  const gloss = defaultGlossary(frame);
+  const out: {
+    key: TopicKey;
+    label: string;
+    group: "slot" | "person" | "room" | "motive";
+  }[] = [];
+  for (let t = 0; t < frame.slots; t++) {
+    out.push({ key: topic.slot(t), label: gloss.slotLabel(t), group: "slot" });
+  }
+  for (let p = 0; p < frame.people; p++) {
+    if (p === suspect) continue;
+    out.push({ key: topic.person(p), label: gloss.personName(p), group: "person" });
+  }
+  for (let r = 0; r < frame.plan.rooms.length; r++) {
+    out.push({ key: topic.room(r), label: gloss.roomName(r), group: "room" });
+  }
+  out.push({ key: topic.motive, label: "Themselves", group: "motive" });
+  return out;
+}
+
+export function goto(next: Screen): void {
+  screen.set(next);
+}

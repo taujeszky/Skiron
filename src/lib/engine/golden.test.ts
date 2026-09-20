@@ -144,6 +144,21 @@ describe("golden vectors (invariant 4)", () => {
  * case id rebuilds?" — see the note at the top of this file.
  */
 
+/*
+ * WAVE 4 CHANGED THESE, ON PURPOSE. Par moved from `essentialActions * 1.5`
+ * to a formula with a search term in it, because the old one was measured
+ * against the shortest route through a case and a player cannot find the
+ * shortest route — see `generator/investigation.ts`. The four vectors moved
+ * in `par` and in NOTHING else: same house, same evening, same cards, same
+ * bank digest, same attempt number. That is the file doing exactly its job,
+ * and it is why the answer to a failure here is a question and not a fix.
+ *
+ * `CASE_ID_VERSION` is deliberately NOT bumped. The version exists so that an
+ * old id cannot silently rebuild a different *puzzle*, and the puzzle is
+ * untouched — par is a scoring target the game prints beside the case, not a
+ * fact about it.
+ */
+
 /** FNV-1a, so a long digest fits on one line and still notices one edit. */
 function checksum(text: string): string {
   let h = 2166136261 >>> 0;
@@ -170,10 +185,10 @@ function bankDigest(bank: {
 }
 describe("golden cases (invariant 4, the whole pipeline)", () => {
   const VECTORS: [string, string][] = [
-    ["SK1-E-3f9k2a", "a2 t1/1 c1 s2 r0 | 32312/41014/12111/41144/40000 | c428,c439,c487,c494,c585 | bank 27 par 8 acts 5 says 53931164/4bdf6b4d"],
-    ["SK1-N-3f9k2a", "a0 t2/2 c2 s4 r1 | 333445/222422/244311/242133/242122/551111 | c68,c572,c710,c885,c922,c959,c971 | bank 34 par 9 acts 6 says 0674cb45/ff81bf7b"],
-    ["SK1-H-3f9k2a", "a1 t3/3 c0 s5 r3 | 3303236/2333365/2542224/6552322/3652252/3003333 | c434,c1188,c1398 | bank 32 par 5 acts 3 says acd1f80a/ad48d32e"],
-    ["SK1-X-3f9k2a", "a0 t4/4 c2 s5 r4 | 30003313/22222222/33330400/11111131/26300031/66363666/30044444 | c244,c900,c1388,c1550,c1629,c1695,c1710,c1715,c1753,c1782,c1804,c1854,c1946 | bank 47 par 17 acts 11 says f00f1df5/ae7864ea"],
+    ["SK1-E-3f9k2a", "a2 t1/1 c1 s2 r0 | 32312/41014/12111/41144/40000 | c428,c439,c487,c494,c585 | bank 27 par 21 acts 5 says 53931164/4bdf6b4d"],
+    ["SK1-N-3f9k2a", "a0 t2/2 c2 s4 r1 | 333445/222422/244311/242133/242122/551111 | c68,c572,c710,c885,c922,c959,c971 | bank 34 par 29 acts 6 says 0674cb45/ff81bf7b"],
+    ["SK1-H-3f9k2a", "a1 t3/3 c0 s5 r3 | 3303236/2333365/2542224/6552322/3652252/3003333 | c434,c1188,c1398 | bank 32 par 26 acts 3 says acd1f80a/ad48d32e"],
+    ["SK1-X-3f9k2a", "a0 t4/4 c2 s5 r4 | 30003313/22222222/33330400/11111131/26300031/66363666/30044444 | c244,c900,c1388,c1550,c1629,c1695,c1710,c1715,c1753,c1782,c1804,c1854,c1946 | bank 47 par 46 acts 11 says f00f1df5/ae7864ea"],
   ];
 
   for (const [text, want] of VECTORS) {

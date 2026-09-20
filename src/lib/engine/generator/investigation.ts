@@ -11,12 +11,10 @@
  * would be the cruellest kind of bug: a hint naming an action that releases
  * nothing. So `firstTopic` is imported, not reimplemented.
  *
- * **Par is a starting point, twice over.** The count of essential actions is
- * exact; the multiplier is a guess the plan made before any case existed, and
- * task 10 replaces it with a number fitted to what a hint-following player
- * actually spends. Note when reading that number later that `hint.ts` solves
- * with no tier cap, so the scripted player it would be fitted to reasons at
- * tier 4 on an Easy case — a better player than the case is graded for.
+ * **Par was a starting point, and wave 4 measured it.** See `PAR` below. The
+ * short version is that the old formula — essential actions times 1.5 — was
+ * calibrated against the shortest route through the case, which is a route
+ * only something holding the answer can find.
  */
 
 import { firstTopic } from "../solver/hint";
@@ -51,8 +49,69 @@ export interface Investigation {
   trace: Step[];
 }
 
-/** Starting point, from the plan. Task 10 replaces it from the sim table. */
-const PAR_MULTIPLIER = 1.5;
+/**
+ * Par, and what changed about it in wave 4.
+ *
+ * The plan's formula was `essentialActions * 1.5`. That gave 6 on Easy and 13
+ * on Expert, and it is calibrated against the wrong thing: the count of
+ * essential actions is the *shortest route* through the case, and the only
+ * way to find the shortest route is to already hold the answer. A player has
+ * to search, and search costs moves that the shortest route knows nothing
+ * about.
+ *
+ * Measured with `game/player.ts#blindPlay` — a scripted player that never
+ * sees `essential`, reasons from the cards it holds and then asks whatever
+ * question bears on the most still-open cells — over 40 cases a preset:
+ *
+ * ```
+ * preset  menu  essential  undirected spend  mean  old par
+ * easy      65        4.2     20 / p90  31   19.2        6
+ * normal    96        6.2     29 / p90  53   31.1        9
+ * hard     107        7.2     44 / p90  62   38.1       11
+ * expert   146        8.3     57 / p90  95   57.0       13
+ * ```
+ *
+ * Two things fall out of that. Par was between three and seven times too
+ * tight, so nobody would ever have met it. And the spend correlates only
+ * weakly with the essential count within a preset (r = 0.14 to 0.32) — what
+ * drives it is the *size of the action menu*, which is the search space.
+ *
+ * Hence two terms: the shortest route, generously, plus a fifth of the house.
+ * That lands on 20 / 29 / 33 / 42 against an undirected median of 20 / 29 /
+ * 44 / 57, so Easy and Normal sit on the undirected player's number and the
+ * larger presets sit below it — which is the right shape, because a big case
+ * is where reading the cards instead of sweeping the grid buys the most.
+ *
+ * Still provisional, and honestly so: the scripted player ignores what cards
+ * *say*, and a person does not. It is a measured anchor rather than a fitted
+ * one, and the thing that would replace it is somebody playing.
+ */
+const PAR_ROUTE = 1.5;
+const PAR_SEARCH = 0.2;
+
+/**
+ * How many distinct actions the interface offers on this frame.
+ *
+ * Examine each room; ask each suspect about each slot, about each person
+ * other than themselves, about each room, and about the motive.
+ *
+ * `game/player.ts#everyAction` builds the actual list, and a test checks that
+ * its length is this number — the formula is here because par needs it and
+ * the engine may not import from the game layer, and the test is there
+ * because two copies of a rule is exactly how the hint/investigation split
+ * nearly went wrong.
+ */
+export function actionMenuSize(frame: CaseFrame): number {
+  const rooms = frame.plan.rooms.length;
+  const perSuspect = frame.slots + (frame.people - 1) + rooms + 1;
+  return rooms + frame.suspects * perSuspect;
+}
+
+export function parFor(frame: CaseFrame, essentialActions: number): number {
+  return Math.ceil(
+    essentialActions * PAR_ROUTE + actionMenuSize(frame) * PAR_SEARCH,
+  );
+}
 
 export function planInvestigation(
   frame: CaseFrame,
@@ -85,7 +144,7 @@ export function planInvestigation(
   const actions = [...byKey.values()];
   return {
     actions,
-    par: Math.ceil(actions.length * PAR_MULTIPLIER),
+    par: parFor(frame, actions.length),
     trace: sliceProof(steps),
   };
 }
