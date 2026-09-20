@@ -22,6 +22,7 @@ import {
 
 export const At: KindModule<"At"> = {
   kind: "At",
+  fields: { p: "person", t: "slot", r: "room" },
   holds: (b, _frame, world) => world.loc[b.p][b.t] === b.r,
   canonical: (b) => `At(p${b.p},t${b.t},r${b.r})`,
   normalise: (b) => b,
@@ -35,6 +36,7 @@ export const At: KindModule<"At"> = {
 
 export const NotAt: KindModule<"NotAt"> = {
   kind: "NotAt",
+  fields: { p: "person", t: "slot", r: "room" },
   holds: (b, _frame, world) => world.loc[b.p][b.t] !== b.r,
   canonical: (b) => `NotAt(p${b.p},t${b.t},r${b.r})`,
   normalise: (b) => b,
@@ -48,6 +50,7 @@ export const NotAt: KindModule<"NotAt"> = {
 
 export const Stayed: KindModule<"Stayed"> = {
   kind: "Stayed",
+  fields: { p: "person", r: "room", t1: "slot", t2: "slot" },
   // Read min..max rather than t1..t2 so a span the wrong way round is false
   // where it should be, instead of vacuously true.
   holds: (b, _frame, world) => {
@@ -85,6 +88,7 @@ export const Stayed: KindModule<"Stayed"> = {
 
 export const Visited: KindModule<"Visited"> = {
   kind: "Visited",
+  fields: { p: "person", r: "room" },
   holds: (b, frame, world) => everWas(b, frame.slots, world.loc[b.p]),
   canonical: (b) => `Visited(p${b.p},r${b.r})`,
   normalise: (b) => b,
@@ -97,6 +101,7 @@ export const Visited: KindModule<"Visited"> = {
 
 export const NeverVisited: KindModule<"NeverVisited"> = {
   kind: "NeverVisited",
+  fields: { p: "person", r: "room" },
   holds: (b, frame, world) => !everWas(b, frame.slots, world.loc[b.p]),
   canonical: (b) => `NeverVisited(p${b.p},r${b.r})`,
   normalise: (b) => b,

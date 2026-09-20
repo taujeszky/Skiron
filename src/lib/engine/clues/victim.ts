@@ -14,6 +14,7 @@ import { isSlot, mentions, span, topicKeysFrom } from "./common";
 
 export const AliveAt: KindModule<"AliveAt"> = {
   kind: "AliveAt",
+  fields: { t: "slot" },
   holds: (b, _frame, world) => victimAliveAt(world, b.t),
   canonical: (b) => `AliveAt(t${b.t})`,
   normalise: (b) => b,
@@ -26,6 +27,7 @@ export const AliveAt: KindModule<"AliveAt"> = {
 
 export const DeathWindow: KindModule<"DeathWindow"> = {
   kind: "DeathWindow",
+  fields: { a: "slot", b: "slot" },
   holds: (b, _frame, world) => {
     const lo = Math.min(b.a, b.b);
     const hi = Math.max(b.a, b.b);

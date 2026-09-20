@@ -130,8 +130,14 @@ how-to-play screen must state all of them.
 
 A small closed set. Each clue type is one module providing: an evaluator
 `holds(clue, world)`, propagators for both solvers, topic keys (which questions release
-it), a canonical form with a normaliser (for equality tests), a template sentence, and a
-JSON schema fragment for the LLM parse-back. Start with the core set and add the extension
+it), a canonical form with a normaliser (for equality tests), a template sentence, and
+the domain of each payload field, from which wave 5 derives both the JSON schema
+fragment for the LLM parse-back and the reader that turns the model's answer back into
+a clue. *Changed in wave 5: this said "a JSON schema fragment". Writing seventeen
+fragments by hand means seventeen chances for the schema, the frame's real bounds and
+`valid` to drift apart silently — inside the one check whose job is to notice that two
+things disagree. Declaring the domains instead makes the fragment and the parser two
+views of one declaration, and a new clue kind cannot compile without it.* Start with the core set and add the extension
 set once wave 3's harness can measure what each type does to case quality.
 
 | Core type | Meaning |

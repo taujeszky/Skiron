@@ -14,6 +14,7 @@ import { headsWord, isRoom, isSlot, mentions, topicKeysFrom } from "./common";
 
 export const Occupied: KindModule<"Occupied"> = {
   kind: "Occupied",
+  fields: { r: "room", t: "slot" },
   holds: (b, frame, world) => presentMask(frame, world, b.r, b.t) !== 0,
   canonical: (b) => `Occupied(r${b.r},t${b.t})`,
   normalise: (b) => b,
@@ -26,6 +27,7 @@ export const Occupied: KindModule<"Occupied"> = {
 
 export const Empty: KindModule<"Empty"> = {
   kind: "Empty",
+  fields: { r: "room", t: "slot" },
   holds: (b, frame, world) => presentMask(frame, world, b.r, b.t) === 0,
   canonical: (b) => `Empty(r${b.r},t${b.t})`,
   normalise: (b) => b,
@@ -38,6 +40,7 @@ export const Empty: KindModule<"Empty"> = {
 
 export const Count: KindModule<"Count"> = {
   kind: "Count",
+  fields: { r: "room", t: "slot", k: "count" },
   holds: (b, frame, world) => headCount(frame, world, b.r, b.t) === b.k,
   canonical: (b) => `Count(r${b.r},t${b.t},k${b.k})`,
   normalise: (b) => b,

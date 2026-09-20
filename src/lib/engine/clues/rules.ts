@@ -50,6 +50,7 @@ function crossed(
 
 export const DoorClosed: KindModule<"DoorClosed"> = {
   kind: "DoorClosed",
+  fields: { door: "door", from: "slot", to: "slot" },
   // Blocks the transitions `from <= t < to`, so the last transition it can
   // name is `slots - 2`; clamping here keeps a span that runs to the end of
   // the evening from reading past the timeline.
@@ -88,6 +89,7 @@ export const DoorClosed: KindModule<"DoorClosed"> = {
 
 export const BarredDoor: KindModule<"BarredDoor"> = {
   kind: "BarredDoor",
+  fields: { p: "person", door: "door" },
   holds: (b, frame, world) => {
     for (let t = 0; t + 1 < frame.slots; t++) {
       if (crossed(frame, world, b.p, b.door, t)) return false;
@@ -105,6 +107,7 @@ export const BarredDoor: KindModule<"BarredDoor"> = {
 
 export const BarredRoom: KindModule<"BarredRoom"> = {
   kind: "BarredRoom",
+  fields: { p: "person", r: "room" },
   holds: (b, frame, world) => {
     for (let t = 0; t < frame.slots; t++) {
       if (world.loc[b.p][t] === b.r) return false;
@@ -125,6 +128,7 @@ export const BarredRoom: KindModule<"BarredRoom"> = {
 
 export const Capacity: KindModule<"Capacity"> = {
   kind: "Capacity",
+  fields: { r: "room", k: "count" },
   // Living heads, like every other counting clue: a room whose cap is one can
   // still hold a corpse and its killer.
   holds: (b, frame, world) => {

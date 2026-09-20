@@ -34,7 +34,9 @@ README for key handling in Node.
 5. **Call B — the summing-up.** Give it the truth, the culprit's motive and the canonical
    proof trace as template sentences. Lint the result for the culprit's name and the
    murder time.
-6. **`llm/skin/fidelity.ts`.** The parse-back call gets the glossary, the clue schema and
+6. **`llm/skin/fidelity.ts`.** The parse-back call gets the glossary, the clue schema
+   (built per case by `engine/clues/schema.ts#clueBodySchema`, so the model is given the
+   case's real bounds — seven rooms means `maximum: 6`) and
    the prose clues under shuffled opaque ids, and returns a formal clue plus `extraClaims`
    for each. Compare canonical forms. Regenerate failures (*starting point*: two retries,
    with the mismatch fed back), then fall back to the template sentence for that clue.

@@ -14,6 +14,7 @@
 
 import { topic } from "../types";
 import type {
+  BodyFields,
   BodyOf,
   CaseFrame,
   ClueKind,
@@ -50,6 +51,15 @@ export interface KindModule<K extends ClueKind> extends ClueModule<K> {
     glossary: Glossary,
     speaker?: PersonId,
   ): string;
+  /**
+   * Required here for the same reason as `template`, and with more at stake.
+   * A kind whose fields are undeclared is a kind the fidelity check cannot
+   * read a sentence back into — so its prose could never be verified, and
+   * invariant 6 would send every one of its cards to the template. Silently:
+   * nothing else would go wrong, the cards would just quietly stop being
+   * written by the model. A compile error is the only way that gets noticed.
+   */
+  fields: BodyFields<K>;
 }
 
 function sortUnique(xs: readonly number[]): number[] {

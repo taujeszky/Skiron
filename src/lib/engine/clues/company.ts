@@ -21,6 +21,7 @@ import {
 
 export const Saw: KindModule<"Saw"> = {
   kind: "Saw",
+  fields: { p: "person", q: "person", t: "slot", r: "room" },
   holds: (b, frame, world) => {
     if (b.p === b.q) return false;
     const present = presentMask(frame, world, b.r, b.t);
@@ -55,6 +56,7 @@ export const Saw: KindModule<"Saw"> = {
 
 export const Together: KindModule<"Together"> = {
   kind: "Together",
+  fields: { p: "person", q: "person", t: "slot" },
   holds: (b, frame, world) =>
     b.p !== b.q &&
     isLiving(frame, world, b.p, b.t) &&
@@ -85,6 +87,7 @@ export const Together: KindModule<"Together"> = {
 
 export const AloneIn: KindModule<"AloneIn"> = {
   kind: "AloneIn",
+  fields: { p: "person", t: "slot", r: "room" },
   holds: (b, frame, world) => presentMask(frame, world, b.r, b.t) === bit(b.p),
   canonical: (b) => `AloneIn(p${b.p},t${b.t},r${b.r})`,
   normalise: (b) => b,

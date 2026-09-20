@@ -286,6 +286,69 @@ export interface ClueModule<K extends ClueKind = ClueKind> {
   ): string;
   /** Wave 2: forced-elimination propagators for the deduction solver. */
   propagate?: unknown;
-  /** Wave 5: the JSON schema fragment for the fidelity parse-back. */
-  schema?: unknown;
+  /**
+   * Wave 5: which domain each payload field draws from.
+   *
+   * The slot reserved in wave 1 said "the JSON schema fragment for the
+   * fidelity parse-back", and the fragment turned out to be the wrong thing
+   * to write by hand. A fragment has to agree with three other things — the
+   * frame's actual bounds, `valid`, and whatever reads the model's answer
+   * back — and seventeen hand-written fragments are seventeen chances for
+   * those to drift apart silently, in a check whose entire job is to notice
+   * that two things disagree.
+   *
+   * So a module declares the domains and `clues/schema.ts` derives both the
+   * fragment and the parser from them. The mapped type is exact: every field
+   * of the payload except `kind`, and nothing else, so a new clue kind cannot
+   * compile until its fields are named.
+   */
+  fields?: BodyFields<K>;
+}
+
+/** Where a payload field's value comes from, and so what bounds it. */
+export type FieldDomain =
+  /** A person id: any suspect, or the victim. */
+  | "person"
+  | "room"
+  | "slot"
+  | "door"
+  /** A head count: 0 to the number of people. */
+  | "count";
+
+/**
+ * Every field of a clue payload except `kind`, and nothing else.
+ *
+ * `Exclude<keyof BodyOf<K>, "kind">` with no `?` is what makes this a guard
+ * rather than documentation: a payload field nobody declared is a type error,
+ * and so is a declared field the payload does not have.
+ */
+export type BodyFields<K extends ClueKind> = {
+  [F in Exclude<keyof BodyOf<K>, "kind">]: FieldDomain;
+};
+
+/**
+ * Just enough JSON Schema to constrain a model's answer.
+ *
+ * Declared here rather than in `llm/` so that the clue registry can derive
+ * fragments without the engine depending on anything above it. The subset is
+ * chosen against what `@google/genai`'s `responseJsonSchema` documents as
+ * supported: type, description, enum, items, minItems, maxItems, minimum,
+ * maximum, anyOf, properties, additionalProperties, required, and the
+ * non-standard propertyOrdering.
+ */
+export interface JsonSchema {
+  type: "object" | "array" | "string" | "number" | "integer" | "boolean";
+  description?: string;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  /** False stops a model inventing fields, which matters for `extraClaims`. */
+  additionalProperties?: boolean;
+  items?: JsonSchema;
+  minItems?: number;
+  maxItems?: number;
+  enum?: string[];
+  minimum?: number;
+  maximum?: number;
+  anyOf?: JsonSchema[];
+  propertyOrdering?: string[];
 }

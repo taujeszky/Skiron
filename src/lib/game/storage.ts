@@ -49,6 +49,15 @@ export const KEYS = {
   settings: `${PREFIX}settings`,
   stats: `${PREFIX}stats`,
   save: `${PREFIX}save`,
+  /**
+   * The API key, deliberately NOT a field of `Settings`.
+   *
+   * Settings are JSON, are written on every toggle, and are the obvious thing
+   * to export or paste into a bug report. A key kept in that object would
+   * leave with any of them. Its own slot means the only code that can read it
+   * is the code that asked for it by name (invariant 9, and `llm/key.ts`).
+   */
+  key: `${PREFIX}key`,
 } as const;
 
 export function memoryStore(): KeyValue {
@@ -140,6 +149,40 @@ function writeRaw(key: string, value: unknown): void {
     backend.set(key, JSON.stringify(value));
   } catch {
     /* a value with a cycle in it is a bug here, not a reason to crash */
+  }
+}
+
+/* ------------------------------------------------------------ raw strings */
+
+/**
+ * Read and write a plain string on the same backend the rest of this module
+ * uses, with no JSON layer and no validator.
+ *
+ * Exists for the API key, which is a string rather than a structure and must
+ * not pass through `Settings`. Kept here rather than in `llm/` so that there
+ * is still exactly one module in the app that talks to storage.
+ */
+export function readText(key: string): string | null {
+  try {
+    return backend.get(key);
+  } catch {
+    return null;
+  }
+}
+
+export function writeText(key: string, value: string): void {
+  try {
+    backend.set(key, value);
+  } catch {
+    /* a full or locked-down store is not a reason to crash */
+  }
+}
+
+export function removeText(key: string): void {
+  try {
+    backend.remove(key);
+  } catch {
+    /* as above */
   }
 }
 
