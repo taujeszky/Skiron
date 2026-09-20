@@ -95,6 +95,19 @@ const WEBP_QUALITY = Number(flag("webp-quality", 68));
 /** Leave the victim out — one of the levers on what a pack costs. */
 const SUSPECTS_ONLY = argv.includes("--suspects-only");
 const NO_SCENE = argv.includes("--no-scene");
+/**
+ * Draw pictures for packs that already exist, without rewriting their prose.
+ *
+ * Two jobs, both of which came up the moment there was a real pack. Cases
+ * written before wave 7 need art added, and paying the writer again to get it
+ * would also replace a skin somebody has already read and approved. And when
+ * one portrait out of eighty-four comes back unusable, this is how it is
+ * redrawn — `--only` names the subject, and everything already on disk is
+ * skipped unless `--redraw` says otherwise.
+ */
+const ART_ONLY = argv.includes("--art-only");
+const ONLY = all("only");
+const REDRAW = argv.includes("--redraw");
 
 if (ART && !IMAGE_QUALITIES.includes(QUALITY)) {
   console.error(`--quality must be one of ${IMAGE_QUALITIES.join(", ")}`);
@@ -114,6 +127,15 @@ if (!PRESET_NAMES.includes(PRESET)) {
 
 /** base36, so consecutive seeds do not share a prefix. Same as sim.mjs. */
 const seedOf = (i) => ((i * 2654435761) >>> 0).toString(36);
+
+/**
+ * Where to start counting, so a second run does not land on the first's cases.
+ *
+ * `seedOf(0)` is "0", which is the seed of the three cases wave 5 shipped, so
+ * adding to that pack without this would rewrite one of them and quietly
+ * replace a skin somebody has already read.
+ */
+const SEED_FROM = Number(flag("seed-from", 0));
 
 /* ------------------------------------------------------------------ keys */
 
@@ -151,7 +173,7 @@ const settingFor = (i) =>
 function buildCases() {
   const cases = [];
   for (let i = 0; i < COUNT; i++) {
-    const id = newCaseId(PRESET, SEED ?? seedOf(i));
+    const id = newCaseId(PRESET, SEED ?? seedOf(SEED_FROM + i));
     const out = generate(id);
     if (!out.case) {
       console.error(`  ! ${formatCaseId(id)} did not generate`);
@@ -404,9 +426,8 @@ function dryProvider(kase, image) {
  * with eighty-odd pictures in a pack that is the difference between a site
  * somebody waits for and one they do not.
  */
-async function paintCase(provider, entry, skin) {
+async function paintCase(provider, entry, skin, text = formatCaseId(entry.id)) {
   const frame = entry.case.frame;
-  const text = formatCaseId(entry.id);
   const material = artMaterial(skin, {
     suspectsOnly: SUSPECTS_ONLY,
     noScene: NO_SCENE,
@@ -418,9 +439,21 @@ async function paintCase(provider, entry, skin) {
   const dir = join(OUT, text);
   mkdirSync(dir, { recursive: true });
 
-  const written = [];
+  // Anything already drawn is kept unless `--redraw` says otherwise. A
+  // re-run after a failure should cost the failures and nothing else.
+  const already = new Set(
+    existsSync(dir)
+      ? readdirSync(dir)
+          .filter((f) => f.endsWith(".webp"))
+          .map((f) => f.replace(/\.webp$/, ""))
+      : [],
+  );
+  const wanted = (key) => (ONLY.length === 0 ? true : ONLY.includes(key));
+  const written = [...already].filter(wanted).map((key) => ({ key, bytes: 0 }));
+
   const run = await generateArt(provider, material, {
     quality: QUALITY,
+    have: (key) => !wanted(key) || (already.has(key) && !REDRAW),
     onProgress: (done, of) => process.stdout.write(`    picture ${done}/${of}\r`),
     onImage: async (key, image) => {
       const width = key === "scene" ? SCENE_PX : PORTRAIT_PX;
@@ -433,19 +466,76 @@ async function paintCase(provider, entry, skin) {
     },
   });
 
-  const kb = written.reduce((sum, w) => sum + w.bytes, 0) / 1024;
+  // A redraw pushes a key that was already in the kept list, so the result is
+  // deduped before it becomes `pack.images` — a key listed twice is a
+  // complaint from `verifyPack` and would stop the pack being written.
+  const keys = [...new Set(written.map((w) => w.key))];
+  const drawn = written.reduce((sum, w) => sum + w.bytes, 0) / 1024;
   process.stdout.write(
-    `    pictures  ${written.length}/${material.subjects.length}` +
-      `, ${kb.toFixed(0)} KB, ${run.calls} call(s)\n`,
+    `    pictures  ${keys.length}/${material.subjects.length}` +
+      (drawn > 0 ? `, ${drawn.toFixed(0)} KB new` : ", nothing new") +
+      `, ${run.calls} call(s)\n`,
   );
   for (const bad of run.failed) console.error(`    ! no picture for ${bad.key}: ${bad.reason}`);
-  return written.map((w) => w.key);
+  return keys;
+}
+
+/**
+ * Draw pictures for packs that are already on disk, leaving their prose alone.
+ *
+ * Reads each pack back through the decoder, paints what is missing from the
+ * skin it already carries, and writes it out again with its `images` list
+ * brought up to date. The case, the skin and the fidelity record are untouched
+ * — this only ever adds a field that was empty.
+ */
+async function paintExisting(provider) {
+  const files = readdirSync(OUT).filter((f) => f.endsWith(".json") && f !== "manifest.json");
+  if (files.length === 0) {
+    console.error(`no packs in ${OUT}`);
+    return;
+  }
+  for (const file of files.sort()) {
+    const raw = JSON.parse(readFileSync(join(OUT, file), "utf8"));
+    const pack = decodePack(raw);
+    if (!pack) {
+      console.error(`  ! ${file} does not decode; left alone`);
+      continue;
+    }
+    if (!pack.skin) {
+      console.error(`  ! ${file} has no skin, so there are no prompts to draw from`);
+      continue;
+    }
+    console.log(`  ${pack.id}  ${pack.skin.title}`);
+    const images = await paintCase(provider, { id: null, case: pack.case }, pack.skin, pack.id);
+
+    const next = { ...pack, images };
+    const problems = verifyPack(next);
+    if (problems.length > 0) {
+      console.error(`    ! not written: ${problems.join("; ")}`);
+      continue;
+    }
+    // Re-encoded from the decoded pack, so the case's Maps and Sets go back
+    // through the same codec they came out of rather than being copied raw.
+    writeFileSync(join(OUT, file), JSON.stringify(encodePack(next)));
+  }
+  writeManifest(OUT, NAME);
 }
 
 /** Filled in by `--dry-run --art`, so the stub has a picture to hand back. */
 let stubImage;
 
 async function main() {
+  if (ART_ONLY) {
+    // No case is generated and no prose is written: everything comes off
+    // disk. Kept in front of `buildCases` so nothing is built needlessly.
+    console.log(`skiron author — pictures only, for the packs in ${OUT}`);
+    const key = loadKey();
+    const grade = imageGrade(QUALITY);
+    console.log(`drawing with ${grade.model} at ${grade.size}\n`);
+    await paintExisting(geminiProvider({ key: () => key }));
+    return;
+  }
+
   console.log(`skiron author — ${COUNT} ${PRESET} case(s)`);
   const cases = buildCases();
   if (cases.length === 0) {
