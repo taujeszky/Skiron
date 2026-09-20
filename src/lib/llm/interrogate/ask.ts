@@ -27,7 +27,13 @@ import {
   type Topic,
   classifyQuestion,
 } from "./classify";
-import { type RejectReason, bareFallback, checkReply, safeSilence } from "./guards";
+import {
+  type Forbidden,
+  type RejectReason,
+  bareFallback,
+  checkReply,
+  safeSilence,
+} from "./guards";
 import { type Persona, type VoiceOptions, type VoiceTurn, voiceReply } from "./voice";
 
 /**
@@ -61,7 +67,7 @@ export interface AskRequest {
   /** The conversation so far with this person, oldest first. */
   history: readonly VoiceTurn[];
   /** Room names, room codes and hour labels: what a reply may not name. */
-  forbidden: readonly string[];
+  forbidden: Forbidden;
   /** The skin's nothing-to-say line for this person, or "". */
   silence: string;
   /** The engine's own nothing-to-say sentence, when the skin's is unusable. */

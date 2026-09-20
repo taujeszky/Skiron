@@ -9,7 +9,10 @@ import { type AskRequest, type Release, VOICE_HISTORY, askInWords } from "./ask"
 
 const CARD = "Mrs Pellworth was not in the orangery at nine o'clock.";
 const OTHER = "The kitchen was empty at ten o'clock.";
-const LABELS = ["orangery", "kitchen", "ORG", "KIT", "nine o'clock", "ten o'clock"];
+const LABELS = {
+  words: ["orangery", "kitchen", "nine o'clock", "ten o'clock"],
+  codes: ["ORG", "KIT"],
+};
 
 const TOPICS: Topic[] = [
   { key: "slot:0", label: "nine o'clock", group: "slot" },

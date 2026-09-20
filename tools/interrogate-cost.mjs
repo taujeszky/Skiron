@@ -83,13 +83,18 @@ function loadKey() {
 
 /* ------------------------------------------------------- the material */
 
-/** Every topic, with its grid code, exactly as `controller.ts` builds it. */
-function topicsWith(frame, suspect, glossary) {
+/** Every topic, with its other name, exactly as `controller.ts` builds it. */
+function topicsWith(frame, suspect, glossary, roleOf = () => null) {
   return topicsFor(frame, suspect, glossary).map((t) => ({
     key: t.key,
     label: t.label,
     group: t.group,
-    alias: t.group === "room" ? glossary.roomCode(Number(t.key.slice(5))) : undefined,
+    alias:
+      t.group === "room"
+        ? glossary.roomCode(Number(t.key.slice(5)))
+        : t.group === "person"
+          ? (roleOf(Number(t.key.slice(7))) ?? undefined)
+          : undefined,
   }));
 }
 
@@ -102,7 +107,7 @@ function topicsWith(frame, suspect, glossary) {
  * per group, one naming the label plainly and one going round it, because a
  * classifier that only handles the plain form has not been tested.
  */
-function questionsFor(topic) {
+function questionsFor(topic, context = {}) {
   if (topic.group === "slot") {
     return [
       `Where were you at ${topic.label}?`,
@@ -110,13 +115,24 @@ function questionsFor(topic) {
     ];
   }
   if (topic.group === "person") {
-    return [`Tell me about ${topic.label}.`, `Did you see anything of ${topic.label}?`];
+    const out = [`Tell me about ${topic.label}.`, `Did you see anything of ${topic.label}?`];
+    // Named by their job rather than their name: the label never appears, so
+    // this is the phrasing that actually tests the routing rather than
+    // testing string matching. Only when the role is one of a kind — two
+    // guests would make the question genuinely ambiguous, and a classifier
+    // answering too_broad to it would be right.
+    if (context.role) out.push(`Did ${context.role} say anything to you that evening?`);
+    return out;
   }
   if (topic.group === "room") {
-    return [
+    const out = [
       `Were you in ${topic.label} at any point?`,
       `What do you know about what went on in ${topic.label}?`,
     ];
+    // By the notebook's column heading, which is what a player looking at
+    // the grid would type. The room's name never appears.
+    if (topic.alias) out.push(`Were you anywhere near ${topic.alias}?`);
+    return out;
   }
   return ["Tell me about yourself.", "Why would anyone think it of you?"];
 }
@@ -270,9 +286,12 @@ function estimate() {
 
 /* ------------------------------------------------------------------ live */
 
+const WANT = flag("case", null);
+
 function shippedCase() {
   const files = readdirSync(PACK_DIR)
     .filter((name) => name.endsWith(".json") && name !== "manifest.json")
+    .filter((name) => WANT === null || name.startsWith(WANT))
     .sort();
   for (const name of files) {
     const pack = decodePack(JSON.parse(readFileSync(join(PACK_DIR, name), "utf8")));
@@ -294,7 +313,8 @@ async function live() {
   const frame = kase.frame;
   const glossary = glossaryFor(frame, skin);
   const forbidden = forbiddenLabels(frame, glossary);
-  const provider = geminiProvider({ key: loadKey });
+  const apiKey = loadKey();
+  const provider = geminiProvider({ key: () => apiKey });
 
   console.log(`skiron ask — live, on the shipped case ${pack.id} ("${skin.title}")\n`);
 
@@ -323,10 +343,22 @@ async function live() {
   };
 
   /** Every question to put, with what it ought to come back as. */
+  const roleCount = new Map();
+  for (const person of skin.people) {
+    const role = (person.role ?? "").trim().toLowerCase();
+    if (role !== "") roleCount.set(role, (roleCount.get(role) ?? 0) + 1);
+  }
+  const roleOf = (p) => {
+    const role = (skin.people[p]?.role ?? "").trim();
+    return role !== "" && roleCount.get(role.toLowerCase()) === 1 ? role : null;
+  };
+
   const plan = [];
   for (let s = 0; s < frame.suspects; s++) {
-    for (const topic of topicsWith(frame, s, glossary)) {
-      for (const question of questionsFor(topic)) {
+    for (const topic of topicsWith(frame, s, glossary, roleOf)) {
+      const context =
+        topic.group === "person" ? { role: roleOf(Number(topic.key.slice(7))) } : {};
+      for (const question of questionsFor(topic, context)) {
         plan.push({ suspect: s, question, expect: topic.key, kind: "topic" });
       }
     }
@@ -341,10 +373,20 @@ async function live() {
     sample.push({ suspect: 0, question, expect: null, kind: "injection" });
   }
 
+  /** One transcript per suspect, exactly as the controller keeps it. */
+  const transcripts = new Map();
+  const historyOf = (s) => transcripts.get(s) ?? [];
+  const remember = (s, from, text) => {
+    const turns = historyOf(s);
+    turns.push({ from, text });
+    transcripts.set(s, turns);
+  };
+
   let calls = 0;
   let agreed = 0;
   let judged = 0;
   let voiced = 0;
+  let spoke = 0;
   let withCard = 0;
   const waits = [];
   const misses = [];
@@ -363,13 +405,15 @@ async function live() {
         voice: person.voice,
       },
       motive: person.motive,
-      topics: topicsWith(frame, item.suspect, glossary),
-      history: [],
+      topics: topicsWith(frame, item.suspect, glossary, roleOf),
+      history: historyOf(item.suspect),
       forbidden,
       silence: skin.silence[item.suspect] ?? "",
       plainSilence: "I've nothing to tell you about that.",
       release: release(item.suspect),
     });
+    remember(item.suspect, "player", item.question);
+    remember(item.suspect, "suspect", outcome.text);
     waits.push(Date.now() - started);
     calls += outcome.calls;
 
@@ -380,13 +424,31 @@ async function live() {
       else misses.push({ ...item, got });
     }
     if (outcome.cards.length > 0) withCard++;
-    if (outcome.voiced) voiced++;
-    else rejects.set(outcome.rejected ?? "?", (rejects.get(outcome.rejected ?? "?") ?? 0) + 1);
+    /*
+     * Only a question that reached the voice call can have fallen back.
+     *
+     * `too_broad` and an accusation are answered from a canned line and never
+     * make a second call, so counting them as fallbacks would put the rate at
+     * about a third whatever the model did — a number that moves sensibly
+     * with the question mix and measures nothing. That is the shape of the
+     * mistake wave 5 made with `Count k=0`, caught here on the smoke run.
+     */
+    let shown = "canned";
+    if (outcome.calls === 2) {
+      spoke++;
+      if (outcome.voiced) {
+        voiced++;
+        shown = "voiced";
+      } else {
+        shown = `bare(${outcome.rejected}${outcome.detail ? `: ${outcome.detail}` : ""})`;
+        rejects.set(outcome.rejected ?? "?", (rejects.get(outcome.rejected ?? "?") ?? 0) + 1);
+      }
+    }
 
     const tag = item.kind === "injection" ? "INJ" : item.kind === "off-topic" ? "OFF" : "   ";
     console.log(
       `  ${tag} ${String(waits.at(-1)).padStart(5)}ms  ${got.padEnd(12)} ` +
-        `${outcome.voiced ? "voiced " : `bare(${outcome.rejected})`}  ${item.question}`,
+        `${shown.padEnd(22)} ${item.question}`,
     );
     if (item.kind === "injection") console.log(`        -> ${outcome.text}`);
   }
@@ -397,14 +459,20 @@ async function live() {
   console.log(
     `  routed as written    ${agreed}/${judged} (${((agreed / judged) * 100).toFixed(1)}%)`,
   );
+  console.log(`  answered in voice    ${spoke}  (the rest were canned, at one call)`);
   console.log(
-    `  voiced, not bare     ${voiced}/${sample.length} ` +
-      `(${((voiced / sample.length) * 100).toFixed(1)}%), ${withCard} carried a card`,
+    `  survived the guard   ${voiced}/${spoke} ` +
+      `(${spoke === 0 ? "n/a" : ((voiced / spoke) * 100).toFixed(1) + "%"}), ` +
+      `${withCard} carried a card`,
   );
-  for (const [reason, n] of rejects) console.log(`    fell back on ${reason}: ${n}`);
+  for (const [reason, n] of rejects) {
+    console.log(`    fell back to the bare card on ${reason}: ${n}`);
+  }
   console.log(
     `  wait per question    p50 ${percentile(waits, 0.5)}ms   p95 ${percentile(waits, 0.95)}ms`,
   );
+  const longest = Math.max(0, ...[...transcripts.values()].map((t) => t.length));
+  console.log(`  longest transcript   ${longest} turns with one person`);
 
   if (misses.length > 0) {
     console.log("\n  where it went somewhere else — read these before believing the rate:");

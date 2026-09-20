@@ -151,7 +151,18 @@ describe("the classifier's prompt", () => {
 
   it("gives a room its grid code, because that is what players type", () => {
     const room = TOPICS.find((t) => t.group === "room")!;
-    expect(prompt).toContain(`grid code ${room.alias}`);
+    expect(prompt).toContain(`also known as ${room.alias}`);
+  });
+
+  it("gives a person their job too, where the skin has written one", () => {
+    // Measured: without it, "did the Concierge say anything?" went somewhere
+    // else nine times in sixty-eight on a live Expert case. See `Topic.alias`.
+    const withRole = buildClassifyPrompt({
+      question: "did the concierge say anything?",
+      suspect: "Mrs Pellworth",
+      topics: [{ key: "person:1", label: "Mr Hale", group: "person", alias: "the concierge" }],
+    });
+    expect(withRole).toContain("person:1 = Mr Hale (also known as the concierge)");
   });
 
   it("offers the three ways out as well", () => {

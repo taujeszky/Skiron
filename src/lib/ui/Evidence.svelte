@@ -27,6 +27,7 @@
     game,
     putQuestion,
     questioning,
+    roleOf,
     selectedCard,
     settings,
     topicsFor,
@@ -139,7 +140,11 @@
 
   {#if asking !== null}
     <div class="head">
-      <strong>Questioning {glossary.personName(asking)}</strong>
+      <strong>
+        Questioning {glossary.personName(asking)}{#if roleOf($game!, asking)}<span class="role"
+            >, {roleOf($game!, asking)}</span
+          >{/if}
+      </strong>
       <button class="btn small" onclick={() => questioning.set(null)}>Back to the file</button>
     </div>
 
@@ -158,8 +163,13 @@
               {#if turn.cards && turn.cards.length > 0}
                 <div class="chips">
                   {#each turn.cards as id (id)}
+                    <!-- `data-card` rather than the class: `.chip` is also the
+                         notebook grid's room button, and a browser tool that
+                         went looking for one found a hundred and twenty of the
+                         other. Same lesson as `data-screen`. -->
                     <button
                       class="chip"
+                      data-card={id}
                       class:on={$selectedCard === id}
                       onclick={() => selectedCard.set($selectedCard === id ? null : id)}
                     >
@@ -432,6 +442,19 @@
   .count {
     color: var(--text-dim);
     font-size: 0.78rem;
+  }
+
+  /*
+   * What somebody is, beside who they are.
+   *
+   * The skin has written a role for everybody since wave 5 and nothing has
+   * ever shown one. It is worth a few words here because a player who can
+   * see it can use it — "did the concierge say anything?" is a question the
+   * router can now answer, and one it could not before.
+   */
+  .role {
+    color: var(--text-dim);
+    font-weight: 400;
   }
 
   .filters {

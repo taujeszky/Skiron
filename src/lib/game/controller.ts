@@ -808,6 +808,30 @@ function addTurn(turn: ChatTurn): void {
   flush();
 }
 
+/**
+ * The other name for a topic, or nothing.
+ *
+ * A role is offered only when it is one of a kind: two guests called "a
+ * guest" would make "did the guest say anything?" genuinely ambiguous, and a
+ * router that answered `too_broad` to it would be right. Handing it two
+ * identical aliases would only teach it to guess.
+ */
+function aliasFor(g: Game, group: string, key: TopicKey): string | undefined {
+  if (group === "room") return glossaryOf(g).roomCode(Number(key.slice(5)));
+  if (group !== "person" || !g.skin) return undefined;
+  const role = g.skin.people[Number(key.slice(7))]?.role?.trim();
+  if (!role) return undefined;
+  const same = g.skin.people.filter(
+    (p) => (p.role ?? "").trim().toLowerCase() === role.toLowerCase(),
+  );
+  return same.length === 1 ? role : undefined;
+}
+
+/** What a person is, for the cast strip and for the router. */
+export function roleOf(g: Game, person: PersonId): string {
+  return g.skin?.people[person]?.role?.trim() ?? "";
+}
+
 function historyWith(g: Game, suspect: PersonId): { from: "player" | "suspect"; text: string }[] {
   const out: { from: "player" | "suspect"; text: string }[] = [];
   for (const turn of g.chat) {
@@ -890,9 +914,12 @@ export async function putQuestion(suspect: PersonId, question: string): Promise<
           key: t.key,
           label: t.label,
           group: t.group,
-          // The grid's column heading, which is what a player sees and so is
-          // what a player types. It says nothing the notebook does not.
-          alias: t.group === "room" ? gloss.roomCode(Number(t.key.slice(5))) : undefined,
+          // The other name a player is likely to use: the grid's column
+          // heading for a room, somebody's job for a person. Both are on
+          // screen — the heading in the notebook, the job beside the name
+          // when you question them — so neither tells the model anything the
+          // player has not already got.
+          alias: aliasFor(now, t.group, t.key),
         })),
         history,
         forbidden: forbiddenLabels(frame, gloss),

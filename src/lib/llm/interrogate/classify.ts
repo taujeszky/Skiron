@@ -31,7 +31,22 @@ export interface Topic {
   /** What the picker's button says: a name, an hour, a room. */
   label: string;
   group: "slot" | "person" | "room" | "motive";
-  /** The notebook's column heading for a room, which players type. */
+  /**
+   * The other way a player is likely to name this topic: a room's grid code,
+   * a person's place in the house.
+   *
+   * Measured, not guessed. Without the roles, nine questions in sixty-eight
+   * went somewhere other than where they were written to go on a live Expert
+   * case — and all nine were the same thing: "Did the Concierge say anything
+   * to you?", with nothing in the list to connect a job to a name. Five came
+   * back `too_broad`, which is the safe answer and costs nothing; two guessed
+   * a different person, which costs a move and hands over the wrong card.
+   *
+   * It leaks nothing. A room's code is the notebook's own column heading and
+   * a person's role is written by a model that does not know who did it, so
+   * neither can depend on the answer — and `classify.test.ts` requires the
+   * prompt not to move when the answer does, with the aliases in it.
+   */
   alias?: string;
 }
 
@@ -76,7 +91,8 @@ export const CLASSIFY_SYSTEM = [
   "1. If the question asks about one of the hours, one of the people or one of",
   "   the rooms on the list, return that key. Match on meaning, not on",
   "   spelling: a room's name, its grid code and a plain description of it are",
-  "   all that room.",
+  "   all that room, and a person's name and their place in the house are the",
+  "   same person. Some entries give both; where they do, either one counts.",
   "2. If it asks the person about themselves — their story, their evening,",
   "   what they were doing, why anyone would think it of them — return the",
   "   motive key.",
@@ -116,7 +132,7 @@ export function buildClassifyPrompt(input: ClassifyInput): string {
     if (list.length === 0) continue;
     lines.push(`  ${title}:`);
     for (const topic of list) {
-      const alias = topic.alias ? ` (grid code ${topic.alias})` : "";
+      const alias = topic.alias ? ` (also known as ${topic.alias})` : "";
       lines.push(`    ${topic.key} = ${topic.label}${alias}`);
     }
   }

@@ -150,6 +150,13 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
   tests a build from an hour ago. It cost a wave-5 debugging detour that ended at "the
   attribute is in the build and absent from the page". Same trap as the dev port, one
   server along: check `Get-NetTCPConnection -LocalPort 4173` before believing a failure.
+- **And `vite preview` caches the build directory at startup, so REBUILDING under a
+  running preview server changes nothing it serves.** Different trap, same symptom, and
+  wave 6 hit it after the wave-5 note had already been written: the server was mine and
+  on the right port, `build/` on disk had the new attribute, and `curl` of the very
+  chunk that contained it came back without it. Restart the preview after every build.
+  The decisive check is `curl` against the server, not `grep` against `build/` — and it
+  is worth doing before blaming the service worker, which is where an hour went.
 - **A `*.live.test.ts` must be EXCLUDED from `vitest.config.ts`, not merely absent from
   it.** The name ends in `.test.ts`, so `npm test`'s include pattern matched the live
   test and made three unintended API calls the first time that file existed. The
@@ -221,14 +228,22 @@ in ARCHITECTURE.md section 11 under "What the paid run actually found".
   byte for byte when the culprit, the murder hour, the whole simulated evening **and the
   contents of the bank** change underneath them.
 
-**Wave 6's spend is not yet approved.** `npm run ask -- --estimate` makes no calls and
-measures the real prompts: about **$0.0009 a question**, so $0.019 to $0.043 for a case
-played entirely in words — one to two times what writing a case costs, and unlike the
-writing it is paid every time somebody plays. What is still unmeasured is how well a real
-model routes English (`npm run ask -- --live`) and the runtime fallback rate. Everything
-in wave 6 runs against `llm/stub.ts` until then.
+**Wave 6's spend, approved at up to $5 and measured at about $0.60.** `npm run ask --
+--estimate` makes no calls: about **$0.0009 a question**, so $0.019 to $0.043 for a case
+played entirely in words — one to two times what *writing* a case costs, and unlike the
+writing it is paid every time somebody plays. That is a number wave 8 needs before it
+ships anything.
 
-Next: finish wave 6 with that measurement, then wave 7, art.
+The live run, over the three shipped cases and one Expert case written for it:
+**182/182 questions routed as written, 162/162 replies survived the guard, p50 2.6s a
+question** (two calls; the card itself appears sooner, because the engine releases it
+between them). Those are the numbers *after* three fixes that the first run found — a
+room code that was also an ordinary word, a router that was never told the cast's jobs,
+and testimony written as narrated attribution that a speaker would not repeat verbatim.
+All three are in ARCHITECTURE.md section 12 under "What the live run actually found",
+with what each one measured before and after.
+
+Next: wave 7, art.
 
 ## How it plays (wave 4's verdict, in template text)
 

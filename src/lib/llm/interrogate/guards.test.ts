@@ -13,7 +13,10 @@ import {
 } from "./guards";
 
 const CARD = "Mrs Pellworth was not in the orangery at nine o'clock.";
-const LABELS = ["orangery", "kitchen", "ORG", "KIT", "nine o'clock", "ten o'clock"];
+const LABELS = {
+  words: ["orangery", "kitchen", "nine o'clock", "ten o'clock"],
+  codes: ["ORG", "KIT"],
+};
 
 describe("normalising", () => {
   it("leaves the claim alone and only tidies typography", () => {
@@ -123,8 +126,35 @@ describe("the stray-label check", () => {
     // "KIT" inside "kitted", "orangery" is its own word. A substring match
     // here would reject perfectly innocent prose and drive the fallback rate
     // up for no reason anybody could see.
-    expect(checkReply("I was kitted out for the weather.", [], ["KIT"]).ok).toBe(true);
-    expect(checkReply("Shallow talk, all of it.", [], ["hall"]).ok).toBe(true);
+    const kit = { words: [], codes: ["KIT"] };
+    expect(checkReply("I was kitted out for the weather.", [], kit).ok).toBe(true);
+    const hall = { words: ["hall"], codes: [] };
+    expect(checkReply("Shallow talk, all of it.", [], hall).ok).toBe(true);
+  });
+
+  /*
+   * Found by paying for it, on a live Expert case.
+   *
+   * The writer had named a room the Office and coded it OFF, and "I was off
+   * duty that evening" was rejected for naming a grid column. A good few
+   * codes a writer produces are ordinary words — OIL, FOG, BAR, ICE, ART,
+   * SPA — so a code is matched as the notebook prints it and a room name is
+   * not. The names are the channel that carries a claim; the codes are a
+   * convenience, and one worth being exact about.
+   */
+  it("reads a grid code as a grid code only when it is written as one", () => {
+    const office = { words: ["office"], codes: ["OFF"] };
+    expect(checkReply("I was off duty that evening.", [], office).ok).toBe(true);
+    expect(checkReply("Try OFF, if you must.", [], office)).toMatchObject({
+      reason: "stray-label",
+      detail: "OFF",
+    });
+    // The room's NAME is still caught however it is cased, because that is
+    // what a sentence would actually use to place somebody.
+    expect(checkReply("I was in the Office all evening.", [], office)).toMatchObject({
+      reason: "stray-label",
+      detail: "office",
+    });
   });
 });
 
@@ -137,12 +167,12 @@ describe("the labels a reply may not name", () => {
   it("covers every room, every grid code and every hour", () => {
     const glossary = defaultGlossary(frame);
     for (let r = 0; r < frame.plan.rooms.length; r++) {
-      expect(labels).toContain(glossary.roomCode(r));
+      expect(labels.codes).toContain(glossary.roomCode(r));
     }
     // The engine's own room names are "Room 3", so the article-stripped form
     // is the name itself; a skin's "the orangery" reduces to "orangery".
-    expect(labels.some((l) => l.startsWith("Room "))).toBe(true);
-    expect(labels.some((l) => l.startsWith("slot "))).toBe(true);
+    expect(labels.words.some((l) => l.startsWith("Room "))).toBe(true);
+    expect(labels.words.some((l) => l.startsWith("slot "))).toBe(true);
   });
 
   it("guards a case played in the engine's own words too", () => {

@@ -78,25 +78,48 @@ function stripArticle(label: string): string {
 }
 
 /**
- * Every word that would let a sentence say where somebody was, or when.
+ * Everything that would let a sentence say where somebody was, or when.
  *
+ * Two lists, not one, and the split is a measurement rather than a
+ * preference. A grid code is two or three letters, and plenty of the codes a
+ * writer produces are ordinary English words: OFF, OIL, FOG, BAR, ICE, ART,
+ * SPA. Matching them without regard to case rejected "I was off duty that
+ * evening" for naming the Office — measured on a live Expert case on
+ * 2026-09-20, one fallback in sixty-three, and the reply was innocent.
+ *
+ * So codes are matched **as written**: `validateWriterOutput` upper-cases
+ * every one of them, the notebook's column headings are what a player reads,
+ * and a reply that writes OFF in capitals is naming a grid column where one
+ * that writes "off" is using the word. Room and hour names stay
+ * case-insensitive, because that is the channel that actually carries a
+ * claim.
+ */
+export interface Forbidden {
+  /** Room and hour names. Matched without regard to case. */
+  words: string[];
+  /** Grid codes. Matched exactly as the notebook prints them. */
+  codes: string[];
+}
+
+/**
  * Built from the live glossary rather than from the skin, so a case played in
  * the engine's own words is guarded by "Room 3" and "slot 5" exactly as a
  * dressed one is guarded by "the orangery" and "nine o'clock".
  */
-export function forbiddenLabels(frame: CaseFrame, glossary: Glossary): string[] {
-  const out = new Set<string>();
+export function forbiddenLabels(frame: CaseFrame, glossary: Glossary): Forbidden {
+  const words = new Set<string>();
+  const codes = new Set<string>();
   for (let r = 0; r < frame.plan.rooms.length; r++) {
     const name = stripArticle(glossary.roomName(r));
-    if (name.length >= 3) out.add(name);
+    if (name.length >= 3) words.add(name);
     const code = glossary.roomCode(r);
-    if (code.length >= 2) out.add(code);
+    if (code.length >= 2) codes.add(code);
   }
   for (let t = 0; t < frame.slots; t++) {
     const label = stripArticle(glossary.slotLabel(t));
-    if (label.length >= 3) out.add(label);
+    if (label.length >= 3) words.add(label);
   }
-  return [...out];
+  return { words: [...words], codes: [...codes] };
 }
 
 /**
@@ -106,12 +129,20 @@ export function forbiddenLabels(frame: CaseFrame, glossary: Glossary): string[] 
  * "shallow". Lookarounds rather than `\b` because a room may legitimately be
  * called "St Cuthbert's" and `\b` treats the apostrophe as a boundary.
  */
-function namesLabel(haystack: string, label: string): boolean {
+function namesLabel(haystack: string, label: string, fold: boolean): boolean {
   const pattern = new RegExp(
-    `(?<![\\p{L}\\p{N}])${escape(label.toLowerCase())}(?![\\p{L}\\p{N}])`,
+    `(?<![\\p{L}\\p{N}])${escape(fold ? label.toLowerCase() : label)}(?![\\p{L}\\p{N}])`,
     "u",
   );
   return pattern.test(haystack);
+}
+
+/** The first label this text names, or null. */
+function strayIn(text: string, forbidden: Forbidden): string | null {
+  const folded = text.toLowerCase();
+  for (const word of forbidden.words) if (namesLabel(folded, word, true)) return word;
+  for (const code of forbidden.codes) if (namesLabel(text, code, false)) return code;
+  return null;
 }
 
 /**
@@ -125,7 +156,7 @@ function namesLabel(haystack: string, label: string): boolean {
 export function checkReply(
   reply: string,
   sentences: readonly string[],
-  forbidden: readonly string[],
+  forbidden: Forbidden,
 ): ReplyVerdict {
   const said = normalise(reply);
   if (said === "") return { ok: false, reason: "empty" };
@@ -145,10 +176,22 @@ export function checkReply(
     rest = `${rest.slice(0, at)} ${rest.slice(at + needle.length)}`;
   }
 
-  for (const label of forbidden) {
-    if (namesLabel(rest, label)) {
-      return { ok: false, reason: "stray-label", detail: label };
-    }
+  for (const word of forbidden.words) {
+    if (namesLabel(rest, word, true)) return { ok: false, reason: "stray-label", detail: word };
+  }
+  /*
+   * Codes are checked against the whole reply rather than against what is
+   * left of it, and nothing is struck out first.
+   *
+   * No card sentence can contain one: `explain.ts` writes rooms with
+   * `roomName` and never with `roomCode` — the code is the notebook's column
+   * heading and nothing else. So there is nothing legitimate to excuse, and
+   * checking the whole reply avoids having to strike a case-insensitive
+   * match out of a case-sensitive string, which is the kind of index
+   * arithmetic that hides a stray label rather than finding one.
+   */
+  for (const code of forbidden.codes) {
+    if (namesLabel(said, code, false)) return { ok: false, reason: "stray-label", detail: code };
   }
   return { ok: true };
 }
@@ -171,14 +214,12 @@ export function checkReply(
  */
 export function safeSilence(
   line: string | undefined,
-  forbidden: readonly string[],
+  forbidden: Forbidden,
   fallback: string,
 ): string {
   const said = normalise(line ?? "");
   if (said === "") return fallback;
-  const folded = said.toLowerCase();
-  for (const label of forbidden) if (namesLabel(folded, label)) return fallback;
-  return said;
+  return strayIn(said, forbidden) === null ? said : fallback;
 }
 
 /**

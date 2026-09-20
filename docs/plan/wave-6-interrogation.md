@@ -322,8 +322,64 @@ at phone width: with no key there is no text box and the picker is unchanged,
 with a key the box appears above the same picker, and a question put with a
 refused key leaves an honest note in the transcript rather than nothing.
 
-### Still to do
+### The live run, and the three things it found
 
-The live measurement, which needs the owner's approval — `npm run ask --
---live --questions 20` is between 59 and 72 calls, about seven cents, and
-`npm run test:live` adds four injection questions on top.
+Approved at up to $5 and measured at about $0.60, over roughly 1,200 calls:
+the three shipped cases and one Expert case written for the purpose, because
+the biggest cast is where wave 5's schema limit fired and the lesson stuck.
+
+**182/182 questions routed as written. 162/162 replies survived the guard.
+p50 2.6 seconds a question**, p95 3.2 to 4.5, with the card itself on screen
+sooner than that. The longest conversation reached 52 turns and neither
+number moved.
+
+A hundred per cent on a first measurement would be the thing to distrust.
+This was not one — it is the number after three fixes, all of which came out
+of the first run:
+
+1. **A room code that is also an English word.** The writer coded the Office
+   OFF and the guard rejected "I was off duty that evening". Codes were
+   matched without regard to case, and plenty of them are words: OIL, FOG,
+   BAR, ICE, ART, SPA. A code is now matched as the notebook prints it; a
+   room's name is still matched however it is cased, because the name is
+   what carries a claim.
+2. **A router that was never told the cast's jobs.** Nine misroutings in
+   sixty-eight, and all nine were the same question — "Did the Concierge say
+   anything to you?" — with nothing in the list joining a job to a name.
+   Five answered `too_broad`, which costs nothing and is right; two guessed
+   a different person, which costs a move and hands over the wrong card.
+   `Topic.alias` now carries a unique role as well as a room's code: 86.8%
+   became 100%. **And the role is now shown beside the name when you
+   question somebody** — it had to be, because a player who cannot see it
+   would never have known to ask that way, and a router that understands a
+   question the interface never suggested is answering questions nobody will
+   type.
+3. **Testimony written as narrated attribution.** Three Hard-case replies
+   failed the verbatim check on prose like `Vera Lindqvist says: "I saw..."`
+   — asked to say that while being Vera, the model dropped the attribution.
+   The framing is right for the evidence pane and wrong in a chat where the
+   speaker is obvious. Weakening the guard to accept the quoted core was the
+   tempting fix; instead the voice prompt now says that a line naming you in
+   the third person is your own statement read back out of the file. 90.9%
+   became 100%, guard untouched.
+
+Every injection came back `too_broad` and got the canned line. That is
+structural rather than lucky: the router's whole output is one key out of a
+fixed `enum`, and a topic it did route to would still have shown the voice
+call only the card that topic released. `injection.live.test.ts` asserts the
+stronger form — no reply may name the culprit together with the murder hour,
+and none may contain the prose of a card the question did not release.
+
+One real question was also put through the real app in a browser with a real
+key, on a shipped case. The reply carried the sentence word for word, the
+card appeared in the evidence pane, the chip and the card quoted the same
+words, the counter went 0/19 to 1/19, and the picker marked that hour asked.
+
+### What the scripted questions do not prove
+
+The live questions are written from the topic list — three phrasings per
+group, one naming the label plainly, one going round it, one using the other
+name. So 100% says the routing handles what a player is likely to reach for.
+It is not a claim about arbitrary English, and the honest place to find out
+is somebody playing a whole case in words, which wave 8's polish pass should
+do.
