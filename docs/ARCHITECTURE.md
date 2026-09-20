@@ -893,6 +893,26 @@ side of its own pane on every preset, evidence cards with no `flex: none` that
 collapsed into empty strips, and a floor plan stretched into a tall box with a
 small house floating in it.
 
+### What the mutation pass found
+
+The habit after every wave: plant deliberate bugs and check the suite
+notices. Fifteen mutants over `game/`, thirteen caught. Neither survivor was
+an equivalent mutant, and both were the same kind of gap — a property the code
+states about itself in prose with nothing holding it.
+
+**Reversing the collected half of the card list changed nothing.** The card
+list's order *is* the card numbering: `explainer` labels by position, so
+"Card 3" in a hint means Card 3 in the evidence pane only as long as there is
+one list in one order. `controller.ts` says exactly that in its header
+paragraph, and no test held it.
+
+**Replacing the blind player's open-cell score with a constant changed
+nothing** — reducing it to walking the menu in order, which still solves every
+case, just slowly. That one matters more than it looks: par is anchored on
+this player, so with nothing checking that aiming beats sweeping, par rested
+on a number with no argument behind it. `"sweep"` is a real strategy in
+`player.ts` now and the comparison is a test.
+
 ### Offline means generation, not just loading
 
 Skiron ships no case pack, so "playable offline" means the generator has to

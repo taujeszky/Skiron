@@ -116,6 +116,11 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
   the Claude scratchpad dies with `Cannot find module '/@fs/...'`. Put throwaway engine
   scripts in `tools/` (name them `_something.mjs` and delete them before committing) and
   run them with `npx vite-node --config vitest.config.ts tools/_x.mjs`.
+- **Line endings are LF everywhere, and `.gitattributes` is what keeps them that way.**
+  Without it, git on Windows checks files out as CRLF while the repository stores LF, so
+  any multi-line pattern match against a source file breaks the moment git has touched
+  it. That silently turned seven caught mutants into seven false survivors. Do not remove
+  it.
 - **An ablation measurement is edit-measure-restore, and `git checkout --` is the wrong
   restore.** Tuning here often means switching a filter off, generating a few hundred
   cases and switching it back on; `git checkout -- <file>` takes the file to HEAD and
@@ -244,6 +249,12 @@ Things a later wave will want to know, beyond what ARCHITECTURE.md records:
   reasoning about it. ARCHITECTURE.md section 10 has the argument and the table.
 - **The habit worth keeping**: after a wave, plant deliberate bugs and check the suite
   notices. That is what found both the hypothesis-depth gap and the untested chokepoints
-  in `state.ts`. A surviving mutant is either a missing test or an equivalent mutant, and
-  which one it is has to be established rather than assumed - the ones established as
-  equivalent are documented where they live.
+  in `state.ts`, and in wave 4 it found two guards that were prose rather than tests: the
+  card list's order is the card *numbering*, and the blind player's heuristic has to beat
+  simply sweeping the menu or par is anchored on nothing. A surviving mutant is either a
+  missing test or an equivalent mutant, and which one it is has to be established rather
+  than assumed - the ones established as equivalent are documented where they live.
+- **A mutation tool must refuse to run on a dirty tree.** The restore is `git checkout
+  --`, which takes the file to HEAD and destroys any other uncommitted work in it. That
+  has now cost this project a finished fix twice, the second time through a script
+  written by somebody who had just read the warning.
