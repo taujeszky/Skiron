@@ -60,6 +60,9 @@ npm run offline                # cut the network and generate a case from the ca
 npm run author -- --estimate   # what a paid batch would cost. Makes NO calls.
 npm run author -- --dry-run    # the whole authoring pipeline, stubbed, no key
 npm run author -- --cases 3    # the real thing (ask the owner first)
+npm run ask -- --estimate      # what free text costs per question. Makes NO calls.
+npm run ask -- --live          # routing agreement, fallback rate, latency (ask first)
+npm run test:live              # the tests that spend money. Never part of npm test.
 npm run deploy                 # build + wrangler pages deploy (ask first)
 npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/test fail
                                # with "Cannot find module ./.svelte-kit/tsconfig.json"
@@ -169,10 +172,10 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 
 ## State of the project (2026-09-20)
 
-**Waves 0-5 done.** 696 tests green in ~30s, `npm run check` at 0/0 over 493 files.
-The game is playable end to end, offline, and every case can be dressed by a model whose
-every sentence is checked against the evidence before the player sees it. Measured
-fallback rate: **0% over 23 cases and 888 cards**.
+**Waves 0-5 done; wave 6 built and stubbed.** 781 tests green in ~13s, `npm run check`
+at 0/0 over 503 files. The game is playable end to end, offline, and every case can be
+dressed by a model whose every sentence is checked against the evidence before the
+player sees it. Measured fallback rate: **0% over 23 cases and 888 cards**.
 
 - **Wave 0** - toolchain: SvelteKit + Svelte 5 + Vitest + adapter-static, `vite-node` for
   Node tools, generated icons, PWA manifest.
@@ -209,10 +212,23 @@ roughly $0.02. The three things the paid run found — two schema limits nobody 
 and a false-mismatch artefact that made the fallback rate measure the wrong thing — are
 in ARCHITECTURE.md section 11 under "What the paid run actually found".
 
-Next: wave 6, free-text interrogation. It inherits the whole `llm/` seam, and invariant 8
-(runtime calls never see the truth or unearned cards) is the same shape of problem as
-wave 5's writer prompt — solve it the same way, in the type of the input rather than in
-a comment.
+- **Wave 6** - the same questions, typed. `llm/interrogate/` (classify, voice, the
+  deterministic guards, the orchestrator), `Save.chat` and a chat panel above the topic
+  picker, `tools/interrogate-cost.mjs`. A typed question is routed to one of the picker's
+  own topics and released by `askAbout`, so the two routes cannot drift; the router sees
+  no card and the voice call sees only the cards just released. Invariant 8 is closed in
+  the types, as wave 5 closed the writer's, and the prompts are required to be identical
+  byte for byte when the culprit, the murder hour, the whole simulated evening **and the
+  contents of the bank** change underneath them.
+
+**Wave 6's spend is not yet approved.** `npm run ask -- --estimate` makes no calls and
+measures the real prompts: about **$0.0009 a question**, so $0.019 to $0.043 for a case
+played entirely in words — one to two times what writing a case costs, and unlike the
+writing it is paid every time somebody plays. What is still unmeasured is how well a real
+model routes English (`npm run ask -- --live`) and the runtime fallback rate. Everything
+in wave 6 runs against `llm/stub.ts` until then.
+
+Next: finish wave 6 with that measurement, then wave 7, art.
 
 ## How it plays (wave 4's verdict, in template text)
 

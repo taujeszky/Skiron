@@ -19,6 +19,7 @@
     "offline": "node tools/offline.mjs",
     "inspect": "vite-node --config vitest.config.ts tools/inspect.mjs",
     "author": "vite-node --config vitest.config.ts tools/author-case.mjs",
+    "ask": "vite-node --config vitest.config.ts tools/interrogate-cost.mjs",
     "postinstall": "node scripts/patch-workerd.cjs",
     "deploy": "npm run build && wrangler pages deploy build --project-name=skiron"
   },

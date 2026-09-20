@@ -357,7 +357,7 @@ docs/                ARCHITECTURE.md (write it as the engine lands), plan/
 | 3 | `wave-3-generator.md` | Fair cases on demand, sim harness | **done** 2026-09-20 |
 | 4 | `wave-4-playable.md` | The whole game with template text, offline | **done** 2026-09-20 (deploy deferred to wave 8 by the owner) |
 | 5 | `wave-5-llm-authoring.md` | Skins, fidelity check, authoring CLI, in-app generation | **done** 2026-09-20 — fallback rate 0% over 23 cases and 888 cards; three-case starter pack shipped |
-| 6 | `wave-6-interrogation.md` | Free-text questioning | not started |
+| 6 | `wave-6-interrogation.md` | Free-text questioning | **built, stubbed** 2026-09-20 — tasks 1-6 done and the exit criterion proved exhaustively; the live measurement (routing agreement, fallback rate, latency) awaits the owner, and `npm run ask -- --estimate` has the call count |
 | 7 | `wave-7-art.md` | Portraits, scene art, starter pack | not started |
 | 8 | `wave-8-ship.md` | Tutorial, polish, docs, repo, deploy, catalog | not started |
 | 9 | `wave-9-beyond.md` | Optional: daily case, confrontation, Hungarian, Tauri | not planned in detail |

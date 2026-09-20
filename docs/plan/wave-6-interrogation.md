@@ -294,7 +294,36 @@ guarded by "the orangery" and "nine o'clock".
   accuse everybody once. A guilty person who protested differently from an
   innocent one would be the whole answer, given away in that one exchange.
 
+### What is measured, and what is not
+
+`npm run ask -- --estimate` makes no calls and builds the real prompts for
+every question four cases can be asked. Per question: **about $0.0009**, which
+is $0.019 for an Easy case played entirely in words and $0.043 for an Expert
+one. A played case costs one to two times what writing one costs, and unlike
+the writing it is paid every time somebody plays. ARCHITECTURE.md section 12
+has the table.
+
+What is **not** measured, and cannot be without spending: how often a real
+model routes an English question to the topic it was written from, the runtime
+fallback rate, and the latency a player actually waits. `npm run ask -- --live`
+reports all three and prints every disagreement one by one, because a
+plausible rate is not a verified one — the interesting answer is usually that
+the disagreements are all the same thing.
+
+The exit criterion is proved without spending anything, and exhaustively
+rather than by example: `game/interrogate.test.ts` puts **every** question a
+case can be asked through the picker and through free text and requires the
+same cards and the same moves. Room searches are not in it and are not meant
+to be — they are a click on the map either way, and the free-text layer
+replaces the topic picker, not the whole investigation.
+
+The UI was driven in a real browser against a shipped pack case, at desk and
+at phone width: with no key there is no text box and the picker is unchanged,
+with a key the box appears above the same picker, and a question put with a
+refused key leaves an honest note in the transcript rather than nothing.
+
 ### Still to do
 
-Task 7 (the latency and cost measurement), the live injection tests, and the
-exit-criterion run through the real app.
+The live measurement, which needs the owner's approval — `npm run ask --
+--live --questions 20` is between 59 and 72 calls, about seven cents, and
+`npm run test:live` adds four injection questions on top.

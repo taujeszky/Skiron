@@ -30,12 +30,14 @@ import {
   chat,
   explain,
   game,
+  glossary,
   openCaseText,
   panel,
   putQuestion,
   resume,
   screen,
   start,
+  topicsFor,
   updateSettings,
   useAskProvider,
   useClock,
@@ -123,24 +125,53 @@ function answerableTopic(kase: GeneratedCase): { suspect: PersonId; key: TopicKe
   throw new Error("this case answers nothing, which generate.ts would have rejected");
 }
 
-/** call 0 routes, call 1 voices. */
+/**
+ * A stub that tells the two calls apart by what it was asked, not by a
+ * counter.
+ *
+ * A counter desynchronises the moment a question costs one call instead of
+ * two — `too_broad` and an accusation are answered from a canned line — and
+ * the test would then quietly be asserting about the wrong prompt.
+ */
+const isRouting = (user: string) => user.startsWith("YOU ARE ROUTING A QUESTION");
+
+/** What the voice call was told to say, read back out of its own prompt. */
+function linesGiven(user: string): string {
+  const block = user.split("WHAT YOU TELL THEM")[1] ?? "";
+  return block
+    .split("\n")
+    .slice(1)
+    .map((l) => l.trim())
+    .filter((l) => l !== "")
+    .join(" ");
+}
+
 function scripted(choice: string, reply: (sentences: string) => string): StubProvider {
-  const stub: StubProvider = stubProvider({
-    answer: (call, index) => {
-      if (index % 2 === 0) return { choice };
-      // Echo back whatever the voice prompt was told to say, so the guard is
-      // being exercised on the real sentences rather than on a fixture.
-      const lines = call.user.split("WHAT YOU TELL THEM")[1] ?? "";
-      const said = lines
-        .split("\n")
-        .slice(1)
-        .map((l) => l.trim())
-        .filter((l) => l !== "")
-        .join(" ");
-      return { reply: reply(said) };
+  return stubProvider({
+    answer: (call) =>
+      isRouting(call.user)
+        ? { choice }
+        : // Echo back whatever the voice prompt was told to say, so the guard
+          // is exercised on the real sentences rather than on a fixture.
+          { reply: reply(linesGiven(call.user)) },
+  });
+}
+
+/**
+ * A router that never misreads: the question *is* the topic key.
+ *
+ * It takes the model out of the exit-criterion sweep on purpose. What is
+ * being checked there is that the free-text path releases what the picker
+ * releases, which is a property of the plumbing; how well a real model routes
+ * English is a different question, measured by `npm run ask -- --live`.
+ */
+function perfectRouter(): StubProvider {
+  return stubProvider({
+    answer: (call) => {
+      if (!isRouting(call.user)) return { reply: linesGiven(call.user) };
+      return { choice: call.user.split("<<<")[1].split(">>>")[0] };
     },
   });
-  return stub;
 }
 
 describe("free text is a layer over the picker", () => {
@@ -183,6 +214,42 @@ describe("free text is a layer over the picker", () => {
     expect(get(game)!.collected).toEqual([]);
     expect(get(chat).at(-1)).toMatchObject({ from: "suspect" });
     expect(g.case.frame.people).toBeGreaterThan(0);
+  });
+
+  /*
+   * The exit criterion, exhaustively rather than by example.
+   *
+   * "The same cards available either way" is checked by putting **every**
+   * question this case can be asked through both routes and comparing what
+   * came out. Room searches are not in it and are not meant to be: they are a
+   * click on the map in either mode, and the free-text layer replaces the
+   * topic picker, not the whole investigation.
+   */
+  it("makes every card the picker can release available in words too", async () => {
+    const first = await dressed();
+    const frame = first.case.frame;
+    const keys: { suspect: PersonId; key: TopicKey }[] = [];
+    for (let s = 0; s < frame.suspects; s++) {
+      for (const t of topicsFor(frame, s, get(glossary)!)) {
+        keys.push({ suspect: s, key: t.key });
+      }
+    }
+    expect(keys.length).toBeGreaterThan(20);
+
+    for (const { suspect, key } of keys) askAbout(suspect, key);
+    const byButton = {
+      collected: [...get(game)!.collected].sort(),
+      spent: [...get(game)!.spent].sort(),
+    };
+    expect(byButton.collected.length).toBeGreaterThan(0);
+
+    game.set(null);
+    await dressed();
+    useAskProvider(perfectRouter);
+    for (const { suspect, key } of keys) await putQuestion(suspect, key);
+
+    expect([...get(game)!.collected].sort()).toEqual(byButton.collected);
+    expect([...get(game)!.spent].sort()).toEqual(byButton.spent);
   });
 
   it("quotes the sentence the evidence pane shows, not the raw prose map", async () => {

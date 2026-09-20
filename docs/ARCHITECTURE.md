@@ -1296,3 +1296,177 @@ briefing screen by its heading reading "The case", and a dressed case puts its
 own title there, so every browser tool lost the ability to find it. Screens
 now carry `data-screen`. A test harness must not depend on prose the game is
 free to rewrite.
+
+## 12. Interrogation in words
+
+Wave 6. The same questions, typed. It is the first code in Skiron that calls
+a model **while a player is waiting**, and everything below follows from that
+and from invariant 8: a runtime call never receives the truth, the culprit, or
+a card the player has not earned.
+
+### A layer over the picker, never beside it
+
+A typed question is routed to one of the topics the picker already offers and
+then released by `askAbout`, which is the one function in the game that hands
+over a card. So the move is spent once, the auto-notes fire, the evidence pane
+and the panel update and the save is flushed — all of it through the code a
+button press goes through. That is the whole reason the exit criterion holds:
+`game/interrogate.test.ts` puts **every** question a case can be asked through
+both routes and compares what came out, and the two are the same set.
+
+The alternative — a chat path that reads the bank itself — would have looked
+identical and desynchronised the notebook from the evidence pane silently.
+
+### Two calls, and the order between them is the invariant
+
+```
+  question ──▶ classify ──▶ [a topic key]
+                              │
+                              ▼
+                        askAbout  ← the engine releases the card, on screen
+                              │
+                              ▼
+                            voice ──▶ reply ──▶ checkReply ──▶ shown, or the bare card
+```
+
+The router is given the question, the suspect's name and the labels of the
+topics on offer. It is given no bank, no clue and no world, so it has nothing
+to leak: `ClassifyInput` has three fields and `classify.test.ts` asserts that
+by name. Its output is one key out of a fixed `enum`, which is why an
+injection cannot make it say anything else — there is nothing else for it to
+say.
+
+The voice call is given the persona and **exactly the sentences the engine
+released a moment ago**, which the player is already looking at. That is the
+plan's "the model only ever sees what the player is about to see", arranged so
+that it is true by the shape of the type rather than by the wording of a
+prompt.
+
+Releasing between the two calls is not an implementation detail. It is what
+keeps the router blind, what keeps the voice call's material earned, and what
+answers the latency question: the card appears in the evidence pane while call
+2 is still in the air.
+
+**The prompts do not move when the answer does.** Change the culprit, change
+the murder hour, reverse the whole simulated evening, and the router's prompt
+is identical byte for byte — the same test wave 5 applies to the writer, and
+the only test that proves anything, because reading a prompt and not finding
+the culprit proves nothing when the culprit is one of the cast.
+
+**And they do not move when the bank changes.** This is the leak wave 6 could
+invent and wave 5 could not. `topicsFor` offers every hour, every other person
+and every room whether or not anything is filed under them, and narrowing that
+list to the topics that would release something is an obvious-looking
+optimisation that hands over a map of where the evidence is. It is the same
+family of defect as `bank.ts#silenceLeaks`: every sentence true, and the
+distribution giving the case away. `interrogate.test.ts` empties the bank and
+requires the prompt not to move.
+
+### The guard is arithmetic, not a second model
+
+At authoring time "verified" means a second model reads the prose back. At
+runtime there is somebody waiting, so `interrogate/guards.ts#checkReply` does
+it deterministically: every released sentence must appear **word for word**,
+and once each occurrence has been struck out, what is left may name no room,
+no room code and no hour. A reply that fails falls back to the bare card,
+which is the same text the evidence pane carries and is never wrong.
+
+Those three label kinds are not an arbitrary list: they are the notebook's own
+axes. A claim naming none of them cannot be written into the grid, so it
+cannot be a smuggled fact however it reads. Person names are deliberately not
+guarded — "I have nothing to say about Mr Hale" is the natural answer to a
+question about Mr Hale, and banning it would drive the fallback rate up for
+prose that asserts nothing.
+
+Normalising is limited to typography: curly quotes, dashes, non-breaking
+spaces, runs of whitespace and letter case. Nothing that could change what a
+sentence asserts is folded away, because the fold is the check.
+
+`forbiddenLabels` is built from the live glossary, so a case in the engine's
+own words is guarded by "Room 3" and "slot 5" exactly as a dressed one is
+guarded by "the orangery" and "nine o'clock".
+
+**One thing wave 6 had to close in wave 5's work.** `skin.silence[p]` — what a
+person says when they have nothing — is the one piece of the writer's prose
+the fidelity check never reads, on the grounds that a line making no claim has
+nothing to parse back. Wave 5 wrote it, stored it, and never showed it to
+anybody, so the grounds were never tested. It is the first thing wave 6 puts
+on screen, and "I was in the orangery all evening and saw nothing" is exactly
+the line a writer would produce for that slot. `safeSilence` puts it through
+the same label check at the point of use and drops it for the engine's own
+sentence if it names a room or an hour.
+
+### What a question costs
+
+Measured with `npm run ask -- --estimate`, which builds the real prompts for
+every question four cases can be asked and measures them:
+
+| preset | questions on the menu | answered | router in | voice in | par |
+| --- | --- | --- | --- | --- | --- |
+| Easy | 120 | 47% | 620 | 431 | 21 |
+| Normal | 180 | 50% | 640 | 430 | 30 |
+| Hard | 200 | 44% | 654 | 431 | 34 |
+| Expert | 276 | 33% | 674 | 430 | 49 |
+
+About **$0.0009 a question**, so $0.019 for an Easy case played entirely in
+words and $0.043 for an Expert one. A *played* case therefore costs one to two
+times what *writing* one costs ($0.02), which is worth knowing before wave 8
+ships anything: the writing is a one-off and the playing is not.
+
+`gemini-3.5-flash-lite` routes and `gemini-3.7-flash` speaks. The cheap model
+is right here for the reason it is wrong for the parse-back: its entire output
+is one key out of an enum, nothing it returns is shown to anybody, a
+misrouting is visible and recoverable, and it is the fastest of the three.
+
+Two calls per question is what the plan asks for, and merging them is the
+reserve lever. It would have to keep the principle — the classifier writing a
+content-free lead-in with the engine appending the verified sentence — and it
+has not been needed, because the card is already on screen before call 2
+returns.
+
+### How often a question has an answer at all
+
+Measured over 10,200 questions across 100 cases, four presets:
+
+| cards released by one question | share of all questions |
+| --- | --- |
+| none | 64.6% |
+| one | 27.0% |
+| two | 6.9% |
+| three | 1.3% |
+| four or five | 0.1% |
+
+Two things follow. **Of the questions that are answered, 23.6% release more
+than one card**, so the voice call carries a list of sentences and the guard
+checks each — a single-sentence design would have dropped evidence in a
+quarter of answered questions. And **the motive question releases a card 0
+times out of 10,200**: `topicKeys` never produces `motive`, so it is a
+flavour question that costs a move, and it is the one topic whose reply is
+voiced from `SkinPerson.motive`. That is also why the motive goes into no
+other reply — the picker charges a move for it, and giving it away in a chat
+about something else would make the paid question worthless.
+
+### The other things worth knowing
+
+- **No retries.** Every other model call in the project retries because nobody
+  is waiting. A failed routing leaves an honest note in the transcript the
+  player can act on by asking again; a failed or rejected voicing falls back
+  to the bare card, which is already on screen.
+- **`too_broad` is the safe uncertainty**, and the router is told to prefer it
+  over guessing between two topics: a wrong guess costs a move and hands over
+  the wrong card, and `too_broad` costs nothing. A key that was never offered
+  is read the same way.
+- **The denial is canned and identical for everybody.** Every player will
+  accuse everybody once. A guilty person who protested differently from an
+  innocent one would be the whole answer, given away in that one exchange, so
+  it is built from the turn count and has no field it could vary by.
+- **The transcript lives in the save**, as `Save.chat`, and is the one field
+  `parseSave` reads leniently: a bad turn is dropped and the rest kept, where
+  every other malformed field throws the whole save away. Losing somebody's
+  notebook over a line of chat would be the validator doing more damage than
+  the corruption.
+- **Free text needs a key *and* a skin.** Without a skin there are no
+  personas, no manner and no nothing-to-say lines — there is nobody for the
+  model to be. A shipped pack case has a skin and may have no key, and a
+  generated case can have a key and no skin; in either the picker is the whole
+  interrogation, which is what wave 4 shipped as.
