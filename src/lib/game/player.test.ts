@@ -114,6 +114,34 @@ describe("a player with no idea what to ask", () => {
   });
 
   /**
+   * The heuristic has to be worth having, and this is the only thing that
+   * says so.
+   *
+   * A mutation pass replaced the open-cell score with a constant — reducing
+   * the player to walking the menu in order — and every test stayed green,
+   * because a player who asks everything also solves everything. That leaves
+   * par anchored on a number with no argument behind it. So the sweep is a
+   * real strategy now, and the claim is checked: aiming at what is still open
+   * gets there in meaningfully fewer questions than asking in order.
+   */
+  it("beats asking everything in order", () => {
+    for (const preset of PRESET_NAMES) {
+      const aimed: number[] = [];
+      const swept: number[] = [];
+      for (const c of casesFor(preset, 4)) {
+        aimed.push(blindPlay(c).actions.length);
+        swept.push(blindPlay(c, { strategy: "sweep" }).actions.length);
+      }
+      const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+      expect(
+        mean(aimed),
+        `${preset}: aiming at open cells (${mean(aimed)}) did not beat ` +
+          `sweeping the menu (${mean(swept)})`,
+      ).toBeLessThan(mean(swept) * 0.9);
+    }
+  });
+
+  /**
    * The counterweight: with reasoning switched off entirely, the player must
    * fail. Without this, "solved every case" could be true of a player that
    * was not reasoning at all — and the whole claim rests on the reasoning

@@ -17,6 +17,7 @@ import {
   clearSuspect,
   errors,
   examineRoom,
+  explain,
   flush,
   game,
   markRoom,
@@ -123,6 +124,37 @@ describe("the actions", () => {
     expect(live().spent.length).toBe(1);
     expect(get(cards).length).toBe(held);
     expect(get(panel).kind).toBe("card");
+  });
+
+  /**
+   * The card list's order IS the card numbering.
+   *
+   * `explainer` labels cards by their position in the list it is given, so
+   * "Card 3" in a hint means Card 3 in the evidence pane only as long as
+   * there is one list in one order. A mutation pass reversed the collected
+   * half and every test stayed green, which means nothing was holding the
+   * promise the controller's own header paragraph makes.
+   */
+  it("numbers cards by when they were found, opening first", async () => {
+    await newCase("normal");
+    const g = live();
+    const opening = g.case.opening.map((c) => c.id);
+    const found: string[] = [];
+    for (const [room, ids] of g.case.bank.found) {
+      if (ids.length === 0) continue;
+      examineRoom(room);
+      for (const id of ids) if (!found.includes(id)) found.push(id);
+      if (found.length >= 3) break;
+    }
+    expect(found.length, "this case gave nothing up to a search").toBeGreaterThan(0);
+
+    expect(get(cards).map((c) => c.id)).toEqual([...opening, ...found]);
+    expect(live().collected).toEqual(found);
+
+    // ...and the labels follow the same list, which is the point of it.
+    const ex = get(explain)!;
+    expect(ex.cardLabel(opening[0])).toBe("Card 1");
+    expect(ex.cardLabel(found[0])).toBe(`Card ${opening.length + 1}`);
   });
 
   it("says so when a question turns up nothing, and still charges for it", async () => {

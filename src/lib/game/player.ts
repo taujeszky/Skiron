@@ -79,6 +79,17 @@ export interface PlayOptions {
    * then aim the next question". See `DEFAULT_LEAD_WEIGHT`.
    */
   leadWeight?: number;
+  /**
+   * How the next question is chosen. `"open-cells"` is the heuristic this
+   * file is about; `"sweep"` simply walks the menu in order.
+   *
+   * The sweep is the baseline, and it is here because a mutation pass found
+   * that gutting the heuristic left every test green — a player who asks
+   * everything in order also solves every case, just slowly. Par is anchored
+   * on this player, so "the heuristic is worth having" has to be a number
+   * somebody can check rather than a thing the file asserts about itself.
+   */
+  strategy?: "open-cells" | "sweep";
 }
 
 /**
@@ -164,7 +175,15 @@ export function blindPlay(c: GeneratedCase, opts: PlayOptions = {}): PlayRecord 
     }
     if (actions.length >= limit) break;
 
-    const next = bestAction(frame, notebook, menu, taken, leads(frame, cards), lead);
+    const next = bestAction(
+      frame,
+      notebook,
+      menu,
+      taken,
+      leads(frame, cards),
+      lead,
+      opts.strategy ?? "open-cells",
+    );
     if (next === null) break;
     taken.add(next.key);
     actions.push(next.key);
@@ -239,7 +258,10 @@ function bestAction(
   taken: ReadonlySet<string>,
   mentioned: ReadonlyMap<TopicKey, number>,
   leadWeight: number,
+  strategy: "open-cells" | "sweep",
 ): { key: string; topic: TopicKey; ask: PersonId | null } | null {
+  if (strategy === "sweep") return menu.find((a) => !taken.has(a.key)) ?? null;
+
   const all = fullMask(frame.plan.rooms.length);
   const open: number[][] = [];
   for (let p = 0; p < frame.people; p++) {
