@@ -258,6 +258,15 @@ the Expert cast list in particular, where 146 questions are now 146 *named* ques
 which could be better or much worse. Wave 8's polish pass should settle it, and should
 not assume wave 4's answers still hold.
 
+**What wave 6 changed, and what it did not.** Item 3 below — Expert's 146-question cast
+list — is the one wave 6 was meant to make moot, and **it has not been shown to.** A
+typed question now routes to the right topic (182/182 on scripted phrasings) and the
+picker and the text box release identical cards, so the grind *can* be skipped. Whether
+a person actually plays that way, and whether it is more pleasant than scanning the
+menu, is unmeasured: nobody has solved a case in words from first question to
+accusation. One real question has been put through the real app, and that is all. Item 2
+is untouched. Wave 8's polish pass should settle both rather than assume either.
+
 The rest of this section is wave 4's verdict, unchanged.
 
 The plan's fun risk says to stop and say so if the puzzle does not stand up on its own.
@@ -349,3 +358,14 @@ Things a later wave will want to know, beyond what ARCHITECTURE.md records:
   --`, which takes the file to HEAD and destroys any other uncommitted work in it. That
   has now cost this project a finished fix twice, the second time through a script
   written by somebody who had just read the warning.
+- **`npm run ask -- --estimate` prices a *played* case**, the way `npm run author --
+  --estimate` prices a written one, and the answer is that playing costs one to two
+  times writing — $0.019 to $0.043 a case — and is paid every time somebody plays, where
+  the writing is paid once. Wave 8 needs that before it ships anything, and wave 7's
+  images are a different order again: $0.045 to $0.151 **per picture**.
+- **A canned answer is not a fallback, and counting it as one measures nothing.** Wave
+  6's first live report put the fallback rate at 35% because `too_broad` and an
+  accusation are answered from a fixed line and never reach the voice call. It moved
+  sensibly with the question mix and was an artefact of the question mix — the same
+  shape of mistake as wave 5's `Count k=0`. Whenever a rate is reported, check what the
+  denominator actually contains.
