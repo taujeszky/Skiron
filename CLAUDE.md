@@ -296,7 +296,12 @@ findings - 27% of expert-preset seeds actually grade expert, a 54-card case can 
 the writer's 90s timeout - are in ARCHITECTURE.md section 13 under "What the paid run
 actually found".
 
-Next: wave 8 - tutorial, polish, docs, repo, deploy, catalog.
+Next: wave 8 - tutorial, polish, docs, repo, deploy, catalog. **It is the wave that
+makes Skiron public**, and three of the four gates above are its: the GitHub repository,
+the first Cloudflare deploy, and the portfolio catalog entry. Nothing is published and no
+Cloudflare project exists. `docs/plan/wave-8-ship.md` ends with what waves 5-7 hand it,
+including the one thing to fix before a public repository exists: **`README.md` still
+says "Design phase - no code yet."**
 
 ## How it plays (wave 4's verdict, in template text)
 
@@ -416,6 +421,14 @@ Things a later wave will want to know, beyond what ARCHITECTURE.md records:
   times writing — $0.019 to $0.043 a case — and is paid every time somebody plays, where
   the writing is paid once. Wave 8 needs that before it ships anything, and wave 7's
   images are a different order again: $0.045 to $0.151 **per picture**.
+- **A prohibition cannot beat a description.** Wave 7's central lesson and the one that
+  generalises furthest. Five of the first seventeen portraits came back holding a ledger,
+  a notepad or a ring of keys - not invented by the image model, but asked for by the
+  *writer's own prompt*, because wave 5's schema said only "A prompt for a portrait of
+  them". A list of "do not"s appended after the subject clause loses to it, every time,
+  and adding a sixth prohibition changes nothing. Fix it where the thing is asked for, or
+  contradict it outright. Before adding an instruction to any existing prompt, check
+  whether something earlier in that prompt is asking for the opposite.
 - **A canned answer is not a fallback, and counting it as one measures nothing.** Wave
   6's first live report put the fallback rate at 35% because `too_broad` and an
   accusation are answered from a fixed line and never reach the voice call. It moved
