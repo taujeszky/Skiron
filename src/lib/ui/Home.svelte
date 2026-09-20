@@ -16,6 +16,7 @@
     loading,
     newCase,
     openCaseText,
+    openPackCase,
     panel,
     resume,
     savedCaseId,
@@ -23,11 +24,22 @@
     stats,
   } from "$lib/game/controller";
   import { totalSolved } from "$lib/game/stats";
+  import { loadManifest } from "$lib/llm/packLoader";
+  import type { PackEntry } from "$lib/llm/pack";
 
   let typed = $state("");
   let saved = $state<string | null>(null);
   /** Only offered when there is a key to use; otherwise it would only annoy. */
   let dressable = $state(false);
+  /**
+   * The shipped cases, if any are shipped.
+   *
+   * Empty until the manifest answers, and the whole section stays hidden if
+   * it never does — an empty shelf with a heading over it is worse than no
+   * shelf. These need no key and no network beyond the file itself.
+   */
+  let shelf = $state<PackEntry[]>([]);
+  let shelfName = $state("");
 
   // Read once on mount rather than in a derived: the save changes only when
   // this screen is not on, so re-reading it on every keystroke would be work
@@ -35,6 +47,15 @@
   $effect(() => {
     saved = savedCaseId();
     dressable = canDress();
+  });
+
+  $effect(() => {
+    void loadManifest().then((manifest) => {
+      if (manifest) {
+        shelf = manifest.cases;
+        shelfName = manifest.name;
+      }
+    });
   });
 
   const busy = $derived($loading !== null);
@@ -97,6 +118,19 @@
         </button>
       {/each}
     </div>
+
+    {#if shelf.length > 0}
+      <h2>Cases we wrote</h2>
+      <div class="shelf">
+        {#each shelf as entry (entry.id)}
+          <button class="case" disabled={busy} onclick={() => openPackCase(entry.id)}>
+            <span class="big">{entry.title}</span>
+            <span class="small">{entry.setting}</span>
+            <span class="tiny">{entry.preset} · {entry.id}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
 
     <h2>A case by number</h2>
     <form
@@ -220,6 +254,30 @@
     font-size: 0.72rem;
     color: var(--text-dim);
     opacity: 0.85;
+  }
+
+  .shelf {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+
+  .case {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-items: flex-start;
+    text-align: left;
+    padding: 10px 12px;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    background: var(--panel);
+    cursor: pointer;
+  }
+
+  .case:hover:not(:disabled) {
+    border-color: var(--accent);
   }
 
   .setting {

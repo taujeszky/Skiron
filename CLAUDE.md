@@ -57,6 +57,9 @@ npm run playthrough            # play a case in headless Chrome through the real
                                # (needs `npm run dev` up; --preset, --shots, --url)
 npm run offline                # cut the network and generate a case from the cache
                                # (needs `npm run build && npm run preview` up)
+npm run author -- --estimate   # what a paid batch would cost. Makes NO calls.
+npm run author -- --dry-run    # the whole authoring pipeline, stubbed, no key
+npm run author -- --cases 3    # the real thing (ask the owner first)
 npm run deploy                 # build + wrangler pages deploy (ask first)
 npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/test fail
                                # with "Cannot find module ./.svelte-kit/tsconfig.json"

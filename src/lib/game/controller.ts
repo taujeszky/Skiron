@@ -380,6 +380,30 @@ export async function resume(): Promise<boolean> {
   return get(game) !== null;
 }
 
+/**
+ * Open a case that was shipped with the site rather than generated here.
+ *
+ * The whole case travels in the file — see `llm/pack.ts` for why that is the
+ * one exception to invariant 4 — so there is nothing to build and no worker
+ * to wait for, and the skin comes with it. Needs no key and no network beyond
+ * the file itself, which the service worker has already cached.
+ */
+export async function openPackCase(id: string, pack?: string): Promise<boolean> {
+  cancelLoad();
+  loading.set({ id: parseCaseId(id) ?? newCaseId("easy", "0"), label: "Opening the case…", cancel: cancelLoad });
+  const { loadPackCase } = await import("$lib/llm/packLoader");
+  const loaded = await loadPackCase(id, pack);
+  loading.set(null);
+  if (!loaded) {
+    panel.set({ kind: "error", text: "That case could not be opened." });
+    return false;
+  }
+  const caseId = parseCaseId(loaded.id);
+  if (!caseId) return false;
+  showGame(gameFor(caseId, loaded.case, loaded.skin), undefined);
+  return true;
+}
+
 async function open(id: CaseId, save?: Save, dress?: string): Promise<void> {
   cancelLoad();
   const run = loadCase(id);
@@ -457,6 +481,18 @@ async function open(id: CaseId, save?: Save, dress?: string): Promise<void> {
   // played in the engine's own words, which is exactly what wave 4 shipped.
   next.skin = await dressCase(next, save === undefined ? dress : undefined, id);
 
+  showGame(next, restored);
+}
+
+/**
+ * Put a finished game on screen.
+ *
+ * Shared by the two ways a case arrives — generated here, or read out of a
+ * shipped pack — so that a pack case gets the same reset, the same stats
+ * entry and the same landing screen as any other. Anything that only happened
+ * on one of those paths would be a difference nobody meant.
+ */
+function showGame(next: Game, restored: Save | undefined): void {
   game.set(next);
   scrubSlot.set(0);
   selectedCard.set(null);
@@ -466,7 +502,7 @@ async function open(id: CaseId, save?: Save, dress?: string): Promise<void> {
 
   if (!restored) {
     stats.update((s) => {
-      const out = recordStart(s, built.difficulty);
+      const out = recordStart(s, next.case.difficulty);
       saveStats(out);
       return out;
     });
@@ -474,6 +510,29 @@ async function open(id: CaseId, save?: Save, dress?: string): Promise<void> {
   flush();
   if (!restored) screen.set("briefing");
   else screen.set(restored.solved ? "summary" : "investigate");
+}
+
+/** A fresh `Game` around a case that is already built. */
+function gameFor(id: CaseId, built: GeneratedCase, skin: CaseSkin | null): Game {
+  return {
+    id,
+    text: formatCaseId(id),
+    case: built,
+    skin,
+    history: newHistory(
+      get(settings).autoNotes
+        ? autoNotes(built.frame, built.opening, newNotebook(built.frame))
+        : newNotebook(built.frame),
+    ),
+    collected: [],
+    spent: [],
+    wrong: [],
+    hints: 0,
+    checks: 0,
+    ms: 0,
+    since: now(),
+    solved: false,
+  };
 }
 
 /* ------------------------------------------------------- the writing phase */
