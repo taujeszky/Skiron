@@ -17,7 +17,7 @@
   const anything = $derived(totalSolved($stats) > 0);
 </script>
 
-<div class="screen">
+<div class="screen" data-screen="stats">
   <div class="inner">
     <header>
       <h1>The record</h1>

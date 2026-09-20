@@ -69,7 +69,7 @@
   }
 </script>
 
-<div class="screen">
+<div class="screen" data-screen="settings">
   <div class="inner">
     <header>
       <h1>Settings</h1>

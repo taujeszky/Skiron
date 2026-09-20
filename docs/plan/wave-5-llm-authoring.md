@@ -222,20 +222,19 @@ Every task is done except the two that need money. `docs/ARCHITECTURE.md`
 section 11 has the reasoning; this is what changed against the task list and
 what is still open.
 
-### What is open, and why
+### The exit criteria, met
 
-**The fallback rate is not measured.** The exit criteria ask for it over at
-least twenty cases, and that is a paid batch, which needs the owner's
-go-ahead. `npm run author -- --estimate` makes no calls and prints the number:
-three Normal cases is 119 cards, **9 calls** (3 per case), **$0.056**, so
-twenty cases is roughly 60 calls and under a dollar. The check itself is
-tested against near-misses and is known to be able to reject.
+**Fallback rate: 0% over 23 cases and 888 cards**, across all four presets,
+after the two fixes the paid run found. Before them it was 1.64% and every
+single failure was the same artefact — see "What the paid run actually found"
+in ARCHITECTURE.md section 11, which is the part of this wave worth reading.
 
-**No pack is shipped.** Task 9's three-case pack is the same batch.
-`static/cases/` does not exist; the home screen's shelf hides itself when
-there is no manifest, and `shipped.test.ts` says so and passes. Point it at a
-real pack and it verifies every case; tampering with one case's recorded
-culprit was caught.
+**The starter pack ships**: three cases in `static/cases/starter/`, one Easy,
+one Normal, one Hard, 76 KB. `shipped.test.ts` re-proves all three on every
+`npm test`.
+
+Cost of the whole wave's live work, measured: about a dollar. Per case it is
+3-6 calls and roughly $0.02.
 
 ### Changed against the task list
 

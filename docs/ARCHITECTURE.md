@@ -1204,3 +1204,95 @@ prices. A twenty-case fallback measurement is therefore well under a dollar.
 *excluded* from the default config as well as omitted from it, because the
 name ends in `.test.ts` and `npm test` matched it — which is how this wave
 made three unintended API calls. The exclusion is a safety rule, not tidiness.
+
+### What the paid run actually found
+
+Three things, none of which a stub could have shown, and two of which were
+bugs in this code rather than in the model.
+
+**A bounded array of seventeen-branch clues is a 400.** The parse-back schema
+asked for `minItems`/`maxItems` equal to the number of sentences sent, which
+Gemini refuses outright once the count passes about thirteen — bisected
+live: 12 passes, 14 fails, and the schema grows by 48 bytes across that step,
+so it is not size. Each item is a seventeen-branch `anyOf` and a bounded array
+is evidently compiled into that many copies of it.
+
+**The same limit, one layer up.** One Expert case in six then failed the same
+way at the *writer*, and it was the largest: 54 cards against 44–52 for the
+five that worked. Probed with `maxOutputTokens: 1`, so the answer cost
+nothing — the writer schema is accepted at 50 clues and refused at 54, because
+its `prose` item carries an `enum` of every clue id and the cost grows with
+the square of the case. I had looked at that array while fixing the first one
+and reasoned it was safe because its items are small; the enum is the part
+that grows. **This one would have reached players**, firing in the browser on
+any large case somebody asked to be dressed, before a word was written.
+
+Coverage is now enforced by `validateWriterOutput`, which is the better guard
+anyway: it says "prose is missing: c14, c23" where a schema could only refuse.
+
+**And the measurement was measuring the wrong thing.** The first 19 cases gave
+a fallback rate of 1.64% — 12 of 730 cards. Every one of the twelve was a
+`Count` clue with `k = 0`, and every other card passed, 718 of 718. The cause
+was an instruction in `KIND_MEANING`: "use Empty rather than Count with k=0".
+So the engine issued `Count(r,t,0)`, the writer wrote it correctly, the reader
+obeyed the instruction and answered `Empty(r,t)`, and the canonical forms
+differed. A false mismatch, every time, by construction.
+
+Wave 1 had anticipated the ambiguity and guessed wrong about it: it gave the
+two kinds deliberately different template sentences — "not a soul was in the
+library" against "nobody was in the library" — so the check could tell them
+apart. A stylistic difference between two templates cannot survive a model
+paraphrasing them, and it should not have to, because `Count(r,t,0)` and
+`Empty(r,t)` are the same claim.
+
+The fix splits two questions that had been one. `canonical` answers "are these
+the same *card*" — the bank, the notebook numbering and the solver all need
+that, and these are different cards. `fidelityKey` answers "do these *mean*
+the same thing", which is what the check compares on. Exactly one pair differs
+between them.
+
+### The fallback rate
+
+Measured after those fixes, over **23 cases and 888 cards across all four
+presets: zero fell back.** Before them, the same pipeline gave 1.64%, all of
+it the `Count 0` artefact.
+
+| preset | cases | cards | fell back | rewritten |
+| --- | --- | --- | --- | --- |
+| Easy | 6 | 161 | 0 | 0 |
+| Normal | 6 | 231 | 0 | 3 |
+| Hard | 6 | 255 | 0 | 1 |
+| Expert | 5 | 241 | 0 | 1 |
+| **all** | **23** | **888** | **0** | **5** |
+
+A zero is exactly what this wave's plan file warned not to believe on its own,
+so: the comparison rejected twelve cards in the run before this one, and the
+near-miss tests — wrong slot, wrong room, wrong person, `Saw` read as
+`Together`, and prose swapped between two clues with nothing telling the
+reader to misread it — all still require it to reject. Five cards needed a
+rewrite and got one, which is the retry path doing visible work rather than
+being decorative.
+
+Cost, measured rather than estimated: **3 to 6 calls per case**, about **$0.02
+each**. The whole of wave 5's live work — two 20-odd-case measurements, the
+probes and the shipped pack — came to roughly a dollar.
+
+### The starter pack
+
+Three cases ship in `static/cases/starter/`, one Easy, one Normal, one Hard,
+76 KB in total: a lighthouse on a sandbar in 1923, a Danube steamer in 1908,
+and a snowed-in mountain observatory in 1957. All three verify on every
+`npm test` through `shipped.test.ts`, which re-runs the oracle, the tier and
+the prose check against the files.
+
+The manifest is rebuilt from the directory rather than from whatever a run
+happened to write, because the tool does one preset per run and a starter pack
+wants a mix — and because `shipped.test.ts` asserts the manifest lists exactly
+the files beside it, which deriving it from those files is the only way to
+guarantee.
+
+One thing the pack broke, worth keeping: `tools/cdp.mjs` identified the
+briefing screen by its heading reading "The case", and a dressed case puts its
+own title there, so every browser tool lost the ability to find it. Screens
+now carry `data-screen`. A test harness must not depend on prose the game is
+free to rewrite.

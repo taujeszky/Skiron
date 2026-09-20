@@ -25,14 +25,17 @@
   const window = $derived(g.case.opening.filter((c) => !isRuleKind(c.body.kind)));
 </script>
 
-<div class="screen">
+<div class="screen" data-screen="briefing">
   <div class="inner">
     <header>
       <div>
         <h1>{skin ? skin.title : "The case"}</h1>
         <p class="sub">
-          {#if skin && skin.place}{skin.place}{#if skin.era}, {skin.era}{/if} ·
-          {/if}{difficultyLabel(g.case.difficulty)} · <span class="id">{g.text}</span>
+          <!-- One expression, not a chain of blocks: a `{/if}` on its own line
+               eats the space before it, which put "1923 ·Easy" on screen. -->
+          {skin && skin.place ? `${skin.place}${skin.era ? `, ${skin.era}` : ""} · ` : ""}{difficultyLabel(
+            g.case.difficulty,
+          )} · <span class="id">{g.text}</span>
         </p>
       </div>
       <button class="btn small" onclick={() => goto("home")}>‹ Desk</button>

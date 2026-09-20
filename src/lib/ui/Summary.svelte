@@ -92,7 +92,7 @@
   const cardLabel = (id: string) => $explain!.cardLabel(id);
 </script>
 
-<div class="screen">
+<div class="screen" data-screen="summary">
   <div class="inner">
     <header>
       <div>

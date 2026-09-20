@@ -45,17 +45,22 @@ export const HELPERS = `
   return true;
 `;
 
-/** What screen is up, judged the way a person would: by what it says. */
+/**
+ * What screen is up, read off a `data-screen` attribute.
+ *
+ * It used to be judged the way a person would, by the heading — "The case",
+ * "The accusation", "Solved". That worked until wave 5, when a dressed case
+ * put its own title in that heading and every browser tool stopped being able
+ * to find the briefing. A test harness must not depend on prose the game is
+ * free to rewrite, so each screen says what it is.
+ */
 export const SCREEN = `
-  const h1 = document.querySelector("h1");
-  const t = h1 ? window.__sk.text(h1) : "";
   if (document.querySelector(".veil")) return "loading";
   if (document.querySelector("[data-pane]")) return "investigate";
-  if (t === "Skiron") return "home";
-  if (t === "The case") return "briefing";
-  if (t === "The accusation") return "accuse";
-  if (t === "Solved") return "summary";
-  return t || "?";
+  const marked = document.querySelector("[data-screen]");
+  if (marked) return marked.getAttribute("data-screen");
+  const h1 = document.querySelector("h1");
+  return h1 ? window.__sk.text(h1) : "?";
 `;
 
 export class Cdp {

@@ -46,7 +46,7 @@
   }
 </script>
 
-<div class="screen">
+<div class="screen" data-screen="accuse">
   <div class="inner">
     <header>
       <h1>The accusation</h1>

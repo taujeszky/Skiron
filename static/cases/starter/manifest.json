@@ -1,0 +1,27 @@
+{
+  "packVersion": 1,
+  "name": "starter",
+  "cases": [
+    {
+      "id": "SK1-E-0",
+      "title": "The Light at Shingle Reef",
+      "setting": "a lighthouse on a sandbar in a winter storm, 1923",
+      "preset": "easy",
+      "fallbacks": 0
+    },
+    {
+      "id": "SK1-H-0",
+      "title": "The Cold Light of Midnight",
+      "setting": "a mountain observatory snowed in for the season, 1957",
+      "preset": "hard",
+      "fallbacks": 0
+    },
+    {
+      "id": "SK1-N-0",
+      "title": "Death on the Blue Danube",
+      "setting": "a Danube river steamer between two ports, 1908",
+      "preset": "normal",
+      "fallbacks": 0
+    }
+  ]
+}

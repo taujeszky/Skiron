@@ -72,7 +72,7 @@
   }
 </script>
 
-<div class="screen">
+<div class="screen" data-screen="home">
   <div class="inner">
     <header>
       <h1>Skiron</h1>

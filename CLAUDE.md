@@ -163,9 +163,10 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 
 ## State of the project (2026-09-20)
 
-**Waves 0-4 done; wave 5 built but unpaid.** 676 tests green in ~30s, `npm run check`
-at 0/0 over 491 files. The game is playable end to end, offline, with engine-written
-sentences, and can now be dressed by a model whose every sentence is checked first.
+**Waves 0-5 done.** 696 tests green in ~30s, `npm run check` at 0/0 over 493 files.
+The game is playable end to end, offline, and every case can be dressed by a model whose
+every sentence is checked against the evidence before the player sees it. Measured
+fallback rate: **0% over 23 cases and 888 cards**.
 
 - **Wave 0** - toolchain: SvelteKit + Svelte 5 + Vitest + adapter-static, `vite-node` for
   Node tools, generated icons, PWA manifest.
@@ -187,21 +188,25 @@ sentences, and can now be dressed by a model whose every sentence is checked fir
   prompts, fidelity, author, glossary, IndexedDB skin store, pack codec and loader),
   `engine/clues/schema.ts` (the clue language as JSON schema, derived from field domains
   declared per kind), one glossary threaded through the controller, and
-  `tools/author-case.mjs` with `--estimate` and `--dry-run`. **Nothing paid has run:**
-  every test is against `llm/stub.ts`.
+  `tools/author-case.mjs` with `--estimate` and `--dry-run`. A three-case starter pack
+  ships in `static/cases/starter/`. Every test runs against `llm/stub.ts`; the live ones
+  are `npm run test:live` and are excluded from `npm test` on purpose.
 
 **Owner decisions, 2026-09-20.** The **first deploy is deferred to wave 8**, which
 already owns "repo, deploy, catalog" - nothing is published and no Cloudflare project
 exists. And wave 5 is to be **built against stubbed model responses first**, with an
 exact expected call count brought back for approval before any real batch is spent.
 
-**The wave-5 estimate, owed under "ask the owner first".** `npm run author --
---estimate` makes no calls and measures the real prompts. Three Normal cases: 119 cards,
-**9 calls** (3 per case: write, check, sum up), 27 if every retry is taken, **$0.056** at
-the pinned models. So the exit criteria's twenty-case fallback measurement is about **60
-calls and well under a dollar**, and task 9's three-case pack is another 9.
+**Wave 5's spend, approved at up to $5 and measured at about $1.** `npm run author --
+--estimate` makes no calls and measures the real prompts; per case it is 3-6 calls and
+roughly $0.02. The three things the paid run found — two schema limits nobody documents
+and a false-mismatch artefact that made the fallback rate measure the wrong thing — are
+in ARCHITECTURE.md section 11 under "What the paid run actually found".
 
-Next: the owner's go-ahead for that batch, then wave 6, free-text interrogation.
+Next: wave 6, free-text interrogation. It inherits the whole `llm/` seam, and invariant 8
+(runtime calls never see the truth or unearned cards) is the same shape of problem as
+wave 5's writer prompt — solve it the same way, in the type of the input rather than in
+a comment.
 
 ## How it plays (2026-09-20, template text only)
 
@@ -221,7 +226,10 @@ rhythm of asking is a rhythm rather than a slog.
 1. **The names.** "Suspect C was not in Room 7 at slot 5" is a correct sentence nobody
    wants to read forty times. Everything else about the game is in better shape than the
    words are, and this is exactly what wave 5 is for. Do not let a wave-5 delay turn into
-   "the puzzle needs work" — it does not.
+   "the puzzle needs work" — it does not. *Fixed in wave 5, for any case with a key or
+   from the shipped pack: "The coroner's assessment establishes that Gregory Bell was
+   killed between nine o'clock and eleven o'clock." Without a key the game still speaks
+   in the engine's own words, and that is still the whole game.*
 2. **The hint panel, one deduction at a time.** Solving by hints alone takes 17 to 86
    presses, because branch 2 hands over the single cheapest deduction. That is right for
    a nudge and wrong as a crutch. A "write down everything obvious" button is the
@@ -278,6 +286,15 @@ Things a later wave will want to know, beyond what ARCHITECTURE.md records:
   simply sweeping the menu or par is anchored on nothing. A surviving mutant is either a
   missing test or an equivalent mutant, and which one it is has to be established rather
   than assumed - the ones established as equivalent are documented where they live.
+- **Two schema limits nobody documents, both found by paying for them.** A
+  `responseJsonSchema` array with `minItems`/`maxItems` is refused outright once the
+  bound times the item's complexity gets large: the parse-back died at 14 entries of a
+  17-branch `anyOf`, and the writer at 54 entries carrying an `enum` of 54 ids. Both
+  are a flat 400 `INVALID_ARGUMENT` with no hint which field is at fault. Bisect with
+  `maxOutputTokens: 1`, which validates the schema and costs nothing.
+- **A test harness must not identify anything by prose the game can rewrite.**
+  `tools/cdp.mjs` found the briefing screen by its heading reading "The case", and the
+  first dressed case put its own title there. Screens carry `data-screen` now.
 - **A mutation tool must refuse to run on a dirty tree.** The restore is `git checkout
   --`, which takes the file to HEAD and destroys any other uncommitted work in it. That
   has now cost this project a finished fix twice, the second time through a script

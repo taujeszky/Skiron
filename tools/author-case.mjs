@@ -23,7 +23,7 @@
  * `../catalog-art/api.mjs` uses and the one thing on this machine that is
  * known to work (invariant 9).
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { newCaseId, formatCaseId } from "$lib/engine/caseId";
@@ -31,7 +31,7 @@ import { generate } from "$lib/engine/generator/generate";
 import { PRESET_NAMES } from "$lib/engine/solver/difficulty";
 import { geminiProvider } from "$lib/llm/gemini";
 import { WRITER_MODEL, PARSER_MODEL, PRICES } from "$lib/llm/models";
-import { encodePack, entryFor, packFor, verifyPack, PACK_VERSION } from "$lib/llm/pack";
+import { decodePack, encodePack, entryFor, packFor, verifyPack, PACK_VERSION } from "$lib/llm/pack";
 import { authorSkin, cluesToDress, WRITER_ATTEMPTS } from "$lib/llm/skin/author";
 import { DEFAULT_ATTEMPTS as FIDELITY_ATTEMPTS } from "$lib/llm/skin/fidelity";
 import { fallbackRate } from "$lib/llm/skin/fidelity";
@@ -129,6 +129,31 @@ function buildCases() {
     if (SEED) break;
   }
   return cases;
+}
+
+/**
+ * Write a manifest describing every pack file in a directory.
+ *
+ * Reads each one back through the decoder rather than trusting this run's own
+ * results, so a file that will not decode is left out of the manifest instead
+ * of being advertised and then failing to open.
+ */
+function writeManifest(dir, name) {
+  const files = readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "manifest.json");
+  const cases = [];
+  for (const f of files.sort()) {
+    const pack = decodePack(JSON.parse(readFileSync(join(dir, f), "utf8")));
+    if (!pack) {
+      console.error(`    ! ${f} does not decode; leaving it out of the manifest`);
+      continue;
+    }
+    cases.push(entryFor(pack));
+  }
+  writeFileSync(
+    join(dir, "manifest.json"),
+    JSON.stringify({ packVersion: PACK_VERSION, name, cases }, null, 2),
+  );
+  return cases.length;
 }
 
 /* ------------------------------------------------------------- estimate */
@@ -330,12 +355,13 @@ async function main() {
     }
   }
 
-  if (entries.length > 0) {
-    writeFileSync(
-      join(OUT, "manifest.json"),
-      JSON.stringify({ packVersion: PACK_VERSION, name: NAME, cases: entries }, null, 2),
-    );
-  }
+  // The manifest is rebuilt from whatever is in the directory, not from what
+  // this run wrote. Two reasons. A starter pack wants a mix of difficulties
+  // and the tool does one preset per run, so runs have to compose rather than
+  // clobber. And `shipped.test.ts` asserts the manifest lists exactly the
+  // files beside it — deriving it from those files is the only way that
+  // cannot drift.
+  writeManifest(OUT, NAME);
 
   console.log("");
   console.log(`  written   ${entries.length}/${cases.length} into ${OUT}`);

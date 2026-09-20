@@ -19,7 +19,7 @@
   let { back = "home" as "home" | "briefing" | "investigate" } = $props();
 </script>
 
-<div class="screen">
+<div class="screen" data-screen="howto">
   <div class="inner">
     <header>
       <h1>How to play</h1>
