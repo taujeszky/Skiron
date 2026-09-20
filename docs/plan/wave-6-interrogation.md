@@ -220,3 +220,81 @@ If the classifier agrees with the picker 97% of the time, find out what the 3%
 are before believing the 97%, because the interesting answer is usually that
 the disagreements are all one thing. And run the edge of the range — the
 biggest cast, the longest transcript — not just the middle of it.
+
+---
+
+## As built (2026-09-20)
+
+Tasks 1 to 6 are built and tested against `llm/stub.ts`; nothing here has made
+a paid call. What follows is where the code disagreed with the tasks above,
+and why.
+
+### Four places the plan was wrong
+
+1. **"The verified prose of the card being released" is a list, not a
+   sentence.** `ask(bank, s, key)` returns a `ClueId[]` and often returns
+   more than one. Measured over 10,200 questions across 100 cases: of the
+   3,611 that are answered at all, **23.6% release two cards or more**, and
+   one released five. `VoiceInput.sentences` is therefore `string[]`, and the
+   verbatim guard checks each one. The wave-5 handoff's advice to make it "one
+   prose string" was written without that measurement and is wrong.
+
+2. **The motive question releases nothing, ever.** `topicKeys` never produces
+   `motive`, so `ask(bank, s, topic.motive)` is empty by construction — 0 out
+   of 10,200. It is a flavour question that costs a move. So the classifier's
+   `motive` answer routes to the picker's motive topic (costing a move, like
+   the button), and it is the only case in which `SkinPerson.motive` is shown
+   to call 2. Putting the motive in every reply would give away for free the
+   one thing the picker charges for.
+
+3. **The text box needs a skin as well as a key.** Task 6 says to hide it
+   without a key, which is necessary and not sufficient: a case played in the
+   engine's own words has no personas, no manner and no nothing-to-say lines,
+   so there is nobody for the model to be. `canConverse()` requires both. The
+   two conditions are independent in both directions — a shipped pack case has
+   a skin and may have no key, and a generated case can have a key and no
+   skin — and the picker is the whole interrogation in either case.
+
+4. **Wave 5 left a hole that only wave 6 could fall into.**
+   `skin.silence[p]` is the one piece of the writer's prose the fidelity check
+   never reads, on the grounds that a line saying nothing has nothing to parse
+   back. Wave 5 then stored it and never showed it to anybody, so the grounds
+   were never tested — and "I was in the orangery all evening and saw nothing"
+   is exactly the line a writer would produce for that slot. Wave 6 is the
+   first code to put it in front of a player, so `guards.ts#safeSilence` puts
+   it through the same label check at the moment of use, and drops it for the
+   engine's own sentence if it names a room or an hour.
+
+### What the guards actually check
+
+Task 4 names room names, room codes and time labels, and that list is not
+arbitrary: they are the notebook's own axes. A claim naming none of them
+cannot be written into the grid, so it cannot be a smuggled fact however it
+reads. Person names are deliberately **not** guarded — "I have nothing to say
+about Mr Hale" is the natural answer to a question about Mr Hale, and banning
+it would drive the fallback rate up for prose that asserts nothing.
+
+`forbiddenLabels` is built from the live glossary, so a case in the engine's
+own words is guarded by "Room 3" and "slot 5" exactly as a dressed one is
+guarded by "the orangery" and "nine o'clock".
+
+### Deliberate design choices worth knowing
+
+- **No retries at runtime.** Every other model call in the project retries,
+  because nobody is waiting. Here somebody is. A failed routing leaves a note
+  in the transcript the player can act on; a failed or rejected voicing falls
+  back to the bare verified sentence, which is already on screen.
+- **`too_broad` is the safe uncertainty.** The classifier is told to prefer it
+  over guessing between two topics, because a wrong guess costs a move and
+  hands over the wrong card, and `too_broad` costs nothing. A key that was
+  never offered is read as `too_broad` too.
+- **A question naming two things takes the one named first.** An arbitrary
+  rule, but a learnable one, which a coin toss is not.
+- **The denial is canned and identical for everybody.** Every player will
+  accuse everybody once. A guilty person who protested differently from an
+  innocent one would be the whole answer, given away in that one exchange.
+
+### Still to do
+
+Task 7 (the latency and cost measurement), the live injection tests, and the
+exit-criterion run through the real app.

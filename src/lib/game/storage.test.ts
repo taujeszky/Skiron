@@ -44,6 +44,10 @@ const goodSave = (): Save => ({
   checks: 1,
   ms: 91_000,
   solved: false,
+  chat: [
+    { who: 1, from: "player", text: "Where were you at nine?" },
+    { who: 1, from: "suspect", text: "In the orangery, as I have said.", cards: ["c12"] },
+  ],
 });
 
 describe("round trips", () => {

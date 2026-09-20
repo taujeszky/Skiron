@@ -26,6 +26,7 @@ import {
 } from "./types";
 import type {
   AccusationRecord,
+  ChatTurn,
   DifficultyStats,
   NotebookData,
   Save,
@@ -329,7 +330,44 @@ export function parseSave(v: unknown): Save | null {
     checks,
     ms,
     solved: bool(v.solved, false),
+    chat: parseChat(v.chat),
   };
+}
+
+/** A long interrogation, bounded so a corrupt save cannot be a huge one. */
+const MAX_CHAT_TURNS = 400;
+const MAX_TURN_TEXT = 2000;
+
+/**
+ * The transcript, read turn by turn and **never** fatal.
+ *
+ * Every other field in a save is strict: a malformed one throws the whole
+ * save away, because a half-read save puts a player back into a case with a
+ * notebook that does not match the grid. The transcript is the one exception,
+ * on purpose. It is decoration — the cards are canon and are rebuilt from the
+ * ids — and losing somebody's notebook because a line of chat came back
+ * wrong would be the validator doing more damage than the corruption.
+ *
+ * So a bad turn is dropped and the rest is kept, and a save written before
+ * wave 6 (with no `chat` at all) reads as an empty transcript rather than as
+ * a refusal.
+ */
+function parseChat(v: unknown): ChatTurn[] {
+  if (!Array.isArray(v)) return [];
+  const out: ChatTurn[] = [];
+  for (const item of v.slice(0, MAX_CHAT_TURNS)) {
+    if (!isObject(item)) continue;
+    const who = int(item.who, 0, MAX_PEOPLE - 1);
+    if (who === null) continue;
+    const from = item.from;
+    if (from !== "player" && from !== "suspect" && from !== "note") continue;
+    const text = item.text;
+    if (typeof text !== "string" || text === "" || text.length > MAX_TURN_TEXT) continue;
+    const cards = item.cards === undefined ? [] : stringArray(item.cards, 64);
+    if (cards === null) continue;
+    out.push(cards.length > 0 ? { who, from, text, cards } : { who, from, text });
+  }
+  return out;
 }
 
 function parseNotebook(v: unknown): NotebookData | null {

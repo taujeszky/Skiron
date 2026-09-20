@@ -98,6 +98,29 @@ export interface AccusationRecord {
   slot: SlotIndex;
 }
 
+/**
+ * One line of a free-text interrogation (wave 6).
+ *
+ * Stored with the save rather than with the skin, because it is the player's
+ * own history with this case and not part of how the case is dressed: a skin
+ * is shared by everybody who opens the same shipped case, and a transcript is
+ * not. It holds text and card ids and nothing else — the cards themselves are
+ * rebuilt from the case id like everything else in a save.
+ *
+ * `note` is the game speaking rather than a person: "that question could not
+ * be sent". It is kept in the transcript so a failure leaves a mark the
+ * player can see instead of a question that silently went nowhere, and it is
+ * never sent back to a model.
+ */
+export interface ChatTurn {
+  /** The suspect this exchange is with. */
+  who: PersonId;
+  from: "player" | "suspect" | "note";
+  text: string;
+  /** Cards this turn released, shown inline. Absent when it released none. */
+  cards?: ClueId[];
+}
+
 export interface Save {
   /** The formatted case id — `SK1-N-3f9k2a`. The whole case, in twelve bytes. */
   id: string;
@@ -112,6 +135,8 @@ export interface Save {
   /** Milliseconds of play, accumulated across sessions. */
   ms: number;
   solved: boolean;
+  /** Every free-text exchange, with everybody, oldest first. */
+  chat: ChatTurn[];
 }
 
 /* -------------------------------------------------------------- the stats */

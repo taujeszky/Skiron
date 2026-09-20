@@ -50,6 +50,30 @@ export const PARSER_MODEL = "gemini-3.8-flash";
  */
 export const CHEAP_TEXT_MODEL = "gemini-3.5-flash-lite";
 
+/**
+ * Wave 6, call 1: routing a typed question to one of the picker's topics.
+ *
+ * The cheap model, and here the reasoning that rules it out for the
+ * parse-back argues for it. A misrouted question is recoverable and visible:
+ * the player reads a reply about the wrong hour and asks again, and the
+ * classifier is told to answer `too_broad` rather than guess, which costs
+ * nothing at all. Nothing it returns is shown to the player — its whole
+ * output is one key out of a fixed enum — so there is no route from a weak
+ * reading to unverified prose. It is also the fastest of the three, and this
+ * is the first call in the project that a player waits on.
+ */
+export const CLASSIFIER_MODEL = CHEAP_TEXT_MODEL;
+
+/**
+ * Wave 6, call 2: the suspect's reply, wrapped around a verified sentence.
+ *
+ * The writer's model, because this is the writer's job: period prose in a
+ * named person's voice. Its one hard requirement is reproducing a sentence
+ * word for word, and `interrogate/guards.ts` checks that arithmetically
+ * rather than trusting it.
+ */
+export const VOICE_MODEL = WRITER_MODEL;
+
 /** Wave 7. $0.045-$0.151 per image depending on resolution. */
 export const DEFAULT_IMAGE_MODEL = "gemini-3.1-flash-image";
 /** Wave 7, for the one scene image. $0.134 per 1K/2K image. */

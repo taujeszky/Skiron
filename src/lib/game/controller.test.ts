@@ -442,6 +442,7 @@ describe("putting it down and picking it up", () => {
       checks: 0,
       ms: 123,
       solved: false,
+      chat: [],
     });
     expect(await resume()).toBe(true);
     const g = live();
@@ -464,6 +465,7 @@ describe("putting it down and picking it up", () => {
       checks: 0,
       ms: 0,
       solved: false,
+      chat: [],
     });
     game.set(null);
     await resume();

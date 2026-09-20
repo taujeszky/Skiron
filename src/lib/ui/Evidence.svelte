@@ -17,11 +17,15 @@
   import type { Clue, PersonId, RoomId, SlotIndex } from "$lib/engine/types";
   import {
     alreadyAsked,
+    answering,
     askAbout,
+    canConverse,
     cards,
+    chat,
     evidenceFilter,
     explain,
     game,
+    putQuestion,
     questioning,
     selectedCard,
     settings,
@@ -85,6 +89,37 @@
     { key: "room", title: "About a room" },
     { key: "motive", title: "About themselves" },
   ] as const;
+
+  /*
+   * The free-text layer (wave 6), which is a layer and never a replacement.
+   *
+   * `$game` is read here so the expression re-runs when the case changes;
+   * `canConverse` is the controller's own gate, so the box and the action
+   * cannot disagree about whether it is on offer. Without a key, or without a
+   * skin to have a voice, the picker below is the whole interrogation — and
+   * that is exactly what wave 4 shipped as.
+   */
+  const chatOn = $derived($game !== null && canConverse());
+  const talk = $derived(asking === null ? [] : $chat.filter((t) => t.who === asking));
+  const waiting = $derived(asking !== null && $answering === asking);
+
+  let typed = $state("");
+  let log = $state<HTMLDivElement | null>(null);
+
+  // Follow the conversation down. Reading `talk.length` is what subscribes
+  // this to a new turn arriving.
+  $effect(() => {
+    void talk.length;
+    if (log) log.scrollTop = log.scrollHeight;
+  });
+
+  function send(): void {
+    if (asking === null || waiting) return;
+    const text = typed.trim();
+    if (text === "") return;
+    typed = "";
+    void putQuestion(asking, text);
+  }
 </script>
 
 <div class="pane">
@@ -107,6 +142,60 @@
       <strong>Questioning {glossary.personName(asking)}</strong>
       <button class="btn small" onclick={() => questioning.set(null)}>Back to the file</button>
     </div>
+
+    {#if chatOn}
+      <div class="chat" data-chat="on">
+        <div class="log" bind:this={log}>
+          {#if talk.length === 0}
+            <p class="aside">
+              Put it in your own words. What they say is dressing; the cards they
+              hand over are the evidence.
+            </p>
+          {/if}
+          {#each talk as turn, i (i)}
+            <div class="turn {turn.from}">
+              <p>{turn.text}</p>
+              {#if turn.cards && turn.cards.length > 0}
+                <div class="chips">
+                  {#each turn.cards as id (id)}
+                    <button
+                      class="chip"
+                      class:on={$selectedCard === id}
+                      onclick={() => selectedCard.set($selectedCard === id ? null : id)}
+                    >
+                      {$explain!.cardLabel(id)}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+          {#if waiting}
+            <div class="turn suspect thinking"><p>…</p></div>
+          {/if}
+        </div>
+        <form
+          class="say"
+          onsubmit={(e) => {
+            e.preventDefault();
+            send();
+          }}
+        >
+          <input
+            type="text"
+            bind:value={typed}
+            disabled={waiting}
+            maxlength="300"
+            placeholder="Where were you at nine?"
+            aria-label="Ask {glossary.personName(asking)} something"
+          />
+          <button class="btn small" type="submit" disabled={waiting || typed.trim() === ""}>
+            Ask
+          </button>
+        </form>
+      </div>
+    {/if}
+
     <div class="scroll">
       {#each groups as group (group.key)}
         {@const list = topics.filter((t) => t.group === group.key)}
@@ -240,6 +329,104 @@
     gap: 10px;
     padding: 8px 10px 4px;
     font-size: 0.88rem;
+  }
+
+  /*
+   * The conversation sits above the picker rather than replacing it: the
+   * picker is the whole interrogation for anybody without a key, and it is
+   * the thing a typed question is routed to. Both on screen at once is also
+   * the only way a player can see that they are the same questions.
+   */
+  .chat {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: 46%;
+    border-bottom: 1px solid var(--panel-border);
+  }
+
+  .log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 10px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+  }
+
+  .turn p {
+    margin: 0;
+    padding: 6px 9px;
+    border-radius: 10px;
+    font-size: 0.84rem;
+    line-height: 1.45;
+    max-width: 92%;
+  }
+
+  .turn.player {
+    align-items: flex-end;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .turn.player p {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-bottom-right-radius: 3px;
+  }
+
+  .turn.suspect p {
+    background: var(--panel-2);
+    border: 1px solid var(--panel-border);
+    border-bottom-left-radius: 3px;
+  }
+
+  .turn.note p {
+    background: transparent;
+    color: var(--warn);
+    font-size: 0.78rem;
+    padding-left: 0;
+  }
+
+  .turn.thinking p {
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+  }
+
+  .chip {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel);
+    color: var(--text-dim);
+  }
+
+  .chip.on,
+  .chip:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .say {
+    display: flex;
+    gap: 5px;
+    padding: 0 10px 8px;
+  }
+
+  .say input {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.82rem;
+    padding: 5px 8px;
   }
 
   .count {

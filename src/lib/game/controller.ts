@@ -40,7 +40,9 @@ import { topic } from "$lib/engine/types";
 // Types and one pure function; nothing here pulls the provider SDK into the
 // app bundle, and `glossaryFor` is the only bridge between game and llm.
 import { glossaryFor } from "$lib/llm/skin/glossary";
+import { LlmError, llmErrorMessage } from "$lib/llm/errors";
 import { hasKey, browserKey } from "$lib/llm/key";
+import type { Provider } from "$lib/llm/provider";
 import { initSkins, skins } from "$lib/llm/skinStore";
 import type { CaseSkin } from "$lib/llm/skin/schema";
 import type {
@@ -100,6 +102,7 @@ import {
 } from "./types";
 import type {
   AccusationRecord,
+  ChatTurn,
   Save,
   Screen,
   Settings,
@@ -138,6 +141,14 @@ export interface Game {
    * names and a status bar still saying "Suspect C".
    */
   skin: CaseSkin | null;
+  /**
+   * Every free-text exchange, with everybody, oldest first (wave 6).
+   *
+   * One list rather than one per suspect, because that is what the save
+   * holds and because "the transcript" is a thing the player has, not a
+   * property of a person. The pane filters it.
+   */
+  chat: ChatTurn[];
   history: History;
   /** Cards released by an action, in the order they came. */
   collected: ClueId[];
@@ -447,6 +458,10 @@ async function open(id: CaseId, save?: Save, dress?: string): Promise<void> {
     // Filled in by `dressCase` once the writing is done, or left null for a
     // case played in the engine's own words.
     skin: null,
+    // A turn naming somebody this frame does not have is from a save written
+    // against a different house. The notebook check below catches that too,
+    // but this one runs whether or not the notebook fits.
+    chat: restored ? restored.chat.filter((turn) => turn.who < frame.people) : [],
     // A fresh case starts with whatever the case file already implies — the
     // body's last cell, and anything the movement rules force from it. The
     // headless play-through is what turned this up: auto-notes fired on a
@@ -519,6 +534,7 @@ function gameFor(id: CaseId, built: GeneratedCase, skin: CaseSkin | null): Game 
     text: formatCaseId(id),
     case: built,
     skin,
+    chat: [],
     history: newHistory(
       get(settings).autoNotes
         ? autoNotes(built.frame, built.opening, newNotebook(built.frame))
@@ -621,6 +637,8 @@ export function cancelLoad(): void {
   if (run) run.cancel();
   writing?.abort();
   writing = null;
+  // A question still in the air belongs to the case being replaced.
+  cancelQuestion();
   loading.set(null);
 }
 
@@ -639,6 +657,7 @@ export function abandon(): void {
       return out;
     });
   }
+  cancelQuestion();
   game.set(null);
   panel.set({ kind: "none" });
   clearSave();
@@ -712,6 +731,196 @@ function take(g: Game, key: string, released: readonly ClueId[], from: string): 
 /** Has this question already been put? For greying out the cast list. */
 export function alreadyAsked(key: string): boolean {
   return get(game)?.spent.includes(key) ?? false;
+}
+
+/* --------------------------------------------------- questions in words */
+
+/**
+ * Wave 6. The same questions, typed instead of picked.
+ *
+ * Free text is a layer *over* the picker and never beside it: a typed
+ * question is routed to one of the picker's topics and then released by
+ * `askAbout`, which is the only path in the game that hands over a card. So
+ * the move is spent once, the auto-notes fire, the evidence pane and the
+ * panel update, and the save is flushed — all of it by the same code a
+ * button press goes through. Reimplementing any of that here would let the
+ * notebook and the evidence pane drift apart with no symptom until somebody
+ * noticed a card that had never been written down.
+ *
+ * The exit criterion is that a case is solvable either way with the same
+ * cards available, and this is how that is true rather than merely intended.
+ */
+
+/** Who is waiting on a model, or null. The chat's "thinking" line reads it. */
+export const answering: Writable<PersonId | null> = writable(null);
+
+/** The transcript, oldest first. The pane filters it by who. */
+export const chat: Readable<ChatTurn[]> = derived(game, (g) => g?.chat ?? []);
+
+/** Long enough for an evening; short enough that a save stays small. */
+const MAX_CHAT_TURNS = 400;
+
+/**
+ * What a person says when the skin's own line cannot be used.
+ *
+ * It asserts nothing — which is the point, and is why it is safe where an
+ * unchecked written line is not. See `llm/interrogate/guards.ts#safeSilence`.
+ */
+export const PLAIN_SILENCE = "I've nothing to tell you about that.";
+
+let inWords: AbortController | null = null;
+
+/**
+ * Where the interrogation's model comes from, behind a seam so a test can
+ * supply `llm/stub.ts`.
+ *
+ * The same shape as `useClock`, `useLoader` and `useSkins` above, and for the
+ * same reason: this is the one action in the game that makes a model call
+ * while a player is waiting, and every test of it has to run with no key and
+ * no network. Left null, the real client is imported only when a question is
+ * actually asked, so the SDK stays out of the bundle a player downloads to
+ * play in the engine's own words.
+ */
+let askProvider: (() => Provider) | null = null;
+
+export function useAskProvider(make: (() => Provider) | null): void {
+  askProvider = make;
+}
+
+/** Stop waiting on a reply. The card, if one was released, stays released. */
+export function cancelQuestion(): void {
+  inWords?.abort();
+  inWords = null;
+  answering.set(null);
+}
+
+/** Free text needs a key to call with and a skin to have a voice. */
+export function canConverse(): boolean {
+  const g = get(game);
+  return g !== null && g.skin !== null && hasKey();
+}
+
+function addTurn(turn: ChatTurn): void {
+  const g = get(game);
+  if (!g) return;
+  const next = [...g.chat, turn];
+  game.set({ ...g, chat: next.slice(-MAX_CHAT_TURNS) });
+  flush();
+}
+
+function historyWith(g: Game, suspect: PersonId): { from: "player" | "suspect"; text: string }[] {
+  const out: { from: "player" | "suspect"; text: string }[] = [];
+  for (const turn of g.chat) {
+    // A note is the game apologising for a failure, not a thing anybody said.
+    if (turn.who !== suspect || turn.from === "note") continue;
+    out.push({ from: turn.from, text: turn.text });
+  }
+  return out;
+}
+
+/**
+ * The engine's half of a typed question, and the only route from the
+ * interrogation module to a bank.
+ *
+ * The sentences come from `explain`, not from `skin.prose`. They differ
+ * exactly when a card fell back to the template, and that is the one card a
+ * player is most likely to read twice — so the chat and the evidence pane
+ * must quote the same words or they will disagree in public.
+ */
+function releaseTo(suspect: PersonId, key: TopicKey): { ids: ClueId[]; sentences: string[] } {
+  const before = get(game);
+  if (!before) return { ids: [], sentences: [] };
+  const ids = [...ask(before.case.bank, suspect, key)];
+  askAbout(suspect, key);
+
+  const after = get(game);
+  const ex = get(explain);
+  if (!after || !ex) return { ids, sentences: [] };
+  const sentences: string[] = [];
+  for (const id of ids) {
+    const clue = after.case.bank.cards.get(id);
+    if (clue) sentences.push(ex.clue(clue));
+  }
+  return { ids, sentences };
+}
+
+export async function putQuestion(suspect: PersonId, question: string): Promise<void> {
+  const g = get(game);
+  const text = question.trim();
+  if (!g || g.solved || text === "" || get(answering) !== null) return;
+  if (!canConverse()) return;
+
+  // Before the question joins the transcript, or it would be in the prompt
+  // twice: once as the history's last line and once as the question itself.
+  const history = historyWith(g, suspect);
+  addTurn({ who: suspect, from: "player", text });
+
+  const controller = new AbortController();
+  inWords = controller;
+  answering.set(suspect);
+  try {
+    const [{ askInWords }, { forbiddenLabels }] = await Promise.all([
+      import("$lib/llm/interrogate/ask"),
+      import("$lib/llm/interrogate/guards"),
+    ]);
+    const provider =
+      askProvider !== null
+        ? askProvider()
+        : (await import("$lib/llm/gemini")).geminiProvider({ key: browserKey() });
+    const now = get(game);
+    if (!now) return;
+    const gloss = glossaryOf(now);
+    const frame = now.case.frame;
+    const person = now.skin?.people[suspect];
+
+    const outcome = await askInWords(
+      provider,
+      {
+        question: text,
+        suspect: gloss.personName(suspect),
+        persona: {
+          name: gloss.personName(suspect),
+          role: person?.role ?? "",
+          bio: person?.bio ?? "",
+          voice: person?.voice ?? "",
+        },
+        motive: person?.motive ?? "",
+        // Every topic, never a filtered list — see the note in `classify.ts`.
+        topics: topicsFor(frame, suspect, gloss).map((t) => ({
+          key: t.key,
+          label: t.label,
+          group: t.group,
+          // The grid's column heading, which is what a player sees and so is
+          // what a player types. It says nothing the notebook does not.
+          alias: t.group === "room" ? gloss.roomCode(Number(t.key.slice(5))) : undefined,
+        })),
+        history,
+        forbidden: forbiddenLabels(frame, gloss),
+        silence: now.skin?.silence[suspect] ?? "",
+        plainSilence: PLAIN_SILENCE,
+        release: (key) => releaseTo(suspect, key),
+      },
+      { signal: controller.signal },
+    );
+
+    addTurn({
+      who: suspect,
+      from: "suspect",
+      text: outcome.text,
+      ...(outcome.cards.length > 0 ? { cards: outcome.cards } : {}),
+    });
+  } catch (cause) {
+    const error = LlmError.from(cause);
+    // A cancel is the player's own doing and needs no apology. Everything
+    // else leaves a line in the transcript, because a question that vanished
+    // without a word would read as the game ignoring them.
+    if (error.kind !== "cancelled") {
+      addTurn({ who: suspect, from: "note", text: llmErrorMessage(error) });
+    }
+  } finally {
+    if (inWords === controller) inWords = null;
+    answering.set(null);
+  }
 }
 
 /* ---------------------------------------------------------- the notebook */
@@ -995,6 +1204,7 @@ export function flush(): void {
     checks: g.checks,
     ms: elapsed(g),
     solved: g.solved,
+    chat: g.chat,
   };
   writeSave(save);
 }
