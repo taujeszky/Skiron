@@ -55,6 +55,7 @@ import type { Loading } from "./cases";
 import { findErrors } from "./errors";
 import type { NotebookError } from "./errors";
 import {
+  applyConclusion,
   autoNotes,
   canRedo,
   canUndo,
@@ -171,6 +172,15 @@ export const focusCell: Writable<{ p: PersonId; t: SlotIndex }> = writable({
 });
 /** Which pane is up on a phone. */
 export const pane: Writable<"map" | "notebook" | "evidence"> = writable("notebook");
+/**
+ * What a tap on a room code in the grid does.
+ *
+ * Crossing out is the move a player makes twenty times for every one time
+ * they place somebody, so it is the default. A mouse can double-click to
+ * place and skip the mode entirely; a thumb cannot, which is what the toggle
+ * is for.
+ */
+export const markMode: Writable<"cross" | "place"> = writable("cross");
 /** Who is being questioned, or null for the cast list. */
 export const questioning: Writable<PersonId | null> = writable(null);
 /** The evidence pane's filter. -1 means "any". */
@@ -367,8 +377,19 @@ async function open(id: CaseId, save?: Save): Promise<void> {
     id,
     text: formatCaseId(id),
     case: built,
+    // A fresh case starts with whatever the case file already implies — the
+    // body's last cell, and anything the movement rules force from it. The
+    // headless play-through is what turned this up: auto-notes fired on a
+    // collected card and the opening is never collected, so the grid sat
+    // blank while the hint panel recited deductions the setting had promised
+    // to make. A restored notebook is left exactly as it was saved, because
+    // the player may have undone some of it on purpose.
     history: newHistory(
-      restored ? cloneNotebook(restored.notebook) : newNotebook(frame),
+      restored
+        ? cloneNotebook(restored.notebook)
+        : get(settings).autoNotes
+          ? autoNotes(frame, built.opening, newNotebook(frame))
+          : newNotebook(frame),
     ),
     // A card id from a save that the rebuilt bank does not hold would be a
     // determinism failure, not a stale save — but dropping it here costs
@@ -599,6 +620,46 @@ export function closePanel(): void {
   panel.set({ kind: "none" });
 }
 
+/**
+ * Do what the hint on screen says.
+ *
+ * A deduction gets written into the notebook; an instruction to go and ask
+ * somebody something takes that action. Neither is charged for again — the
+ * hint has already been paid for, and making the player re-enter the advice
+ * by hand would only be charging them for reading.
+ *
+ * It exists because the hints are the headless play-through's only input:
+ * that test drives the real app and follows the advice, so "follow the
+ * advice" has to be a thing the app can do.
+ */
+export function followHint(): void {
+  const shown = get(panel);
+  if (shown.kind !== "hint") return;
+  const g = get(game);
+  if (!g || g.solved) return;
+  const h = shown.hint;
+  if (h.kind === "deduction") {
+    const next = push(g.history, applyConclusion(g.case.frame, g.history.present, h.step.conclusion));
+    if (next !== g.history) {
+      game.set({ ...g, history: next });
+      flush();
+    }
+    askForHint();
+    return;
+  }
+  if (h.kind === "investigate") {
+    if (h.ask !== null) askAbout(h.ask, h.topic);
+    else examineRoom(Number(h.topic.slice(5)));
+  }
+}
+
+/** Is the hint on screen one that `followHint` can act on? */
+export function hintIsActionable(p: Panel): boolean {
+  return (
+    p.kind === "hint" && (p.hint.kind === "deduction" || p.hint.kind === "investigate")
+  );
+}
+
 /* ------------------------------------------------------- the accusation */
 
 export interface Verdict {
@@ -677,12 +738,27 @@ export const summingUp: Readable<string[]> = derived(
 /* -------------------------------------------------------------- settings */
 
 export function updateSettings(patch: Partial<Settings>): void {
+  const wasOn = get(settings).autoNotes;
   settings.update((s) => {
     const out = { ...s, ...patch };
     saveSettings(out);
     if (patch.theme !== undefined) applyTheme(out.theme);
     return out;
   });
+  // Switching auto-notes on catches the grid up, rather than starting from
+  // whenever the next card happens to arrive. Switching it off leaves what it
+  // has already written, because those marks are true and rubbing them out
+  // would be the setting undoing the player's progress.
+  if (patch.autoNotes === true && !wasOn) catchUp();
+}
+
+function catchUp(): void {
+  const g = get(game);
+  if (!g || g.solved) return;
+  const next = push(g.history, autoNotes(g.case.frame, get(cards), g.history.present));
+  if (next === g.history) return;
+  game.set({ ...g, history: next });
+  flush();
 }
 
 let themeWatcher: MediaQueryList | null = null;

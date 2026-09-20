@@ -37,6 +37,7 @@ import {
   updateSettings,
   useClock,
 } from "./controller";
+import { cellState } from "./notebook";
 import { loadSave, memoryStore, useStore, writeSave } from "./storage";
 import { askKey, examineKey } from "./types";
 import type { KeyValue } from "./storage";
@@ -153,6 +154,41 @@ describe("the actions", () => {
     expect(added).toBeGreaterThan(0);
     for (let i = 0; i < added; i++) undoMark();
     expect(JSON.stringify(live().history.present.ruledOut)).toBe(before);
+  });
+
+  /**
+   * Found by the headless play-through, not by a unit test, which is the
+   * argument for having one: auto-notes fired when a card was collected, and
+   * the opening is never collected, so a case opened with the setting on sat
+   * on a blank grid while the hint panel recited deductions the setting had
+   * promised to make.
+   */
+  it("starts the grid with what the case file already implies", async () => {
+    updateSettings({ autoNotes: true });
+    await newCase("easy");
+    const g = live();
+    const frame = g.case.frame;
+    expect(cellState(frame, g.history.present, frame.victim, frame.slots - 1).set).toBe(
+      frame.murderRoom,
+    );
+  });
+
+  it("starts blank when auto-notes is off", async () => {
+    updateSettings({ autoNotes: false });
+    await newCase("easy");
+    const g = live();
+    expect(g.history.present.ruledOut.flat().every((m) => m === 0)).toBe(true);
+  });
+
+  it("catches the grid up when auto-notes is switched on mid-case", async () => {
+    updateSettings({ autoNotes: false });
+    await newCase("easy");
+    const frame = live().case.frame;
+    expect(cellState(frame, live().history.present, frame.victim, frame.slots - 1).set)
+      .toBe(-1);
+    updateSettings({ autoNotes: true });
+    expect(cellState(frame, live().history.present, frame.victim, frame.slots - 1).set)
+      .toBe(frame.murderRoom);
   });
 
   it("leaves the notebook alone when auto-notes is off", async () => {
