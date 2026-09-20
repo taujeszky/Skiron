@@ -389,8 +389,24 @@ export function parseBackSchema(frame: CaseFrame, ids: readonly string[]): JsonS
     properties: {
       readings: {
         type: "array",
-        minItems: ids.length,
-        maxItems: ids.length,
+        /*
+         * No `minItems`/`maxItems`, and that is a measurement rather than an
+         * oversight.
+         *
+         * With them, this request is a 400 `INVALID_ARGUMENT` as soon as the
+         * count passes about thirteen — measured on gemini-3.8-flash on
+         * 2026-09-20, passing at 12 and failing at 14, with the schema itself
+         * growing by 48 bytes across that step. The cause is not size but
+         * expansion: each item is a seventeen-branch `anyOf`, and a bounded
+         * array appears to be compiled into that many copies of it. The
+         * writer's arrays keep their bounds because their items are small.
+         *
+         * Nothing is lost. The `id` enum still confines each reading to an
+         * entry that was actually sent, the prompt asks for one per entry,
+         * and a reading that does not come back is reported as `missing` and
+         * falls back to the template — which is the same treatment as a
+         * reading that comes back wrong.
+         */
         items: {
           type: "object",
           additionalProperties: false,

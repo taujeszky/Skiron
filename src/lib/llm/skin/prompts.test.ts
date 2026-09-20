@@ -224,12 +224,21 @@ describe("the parse-back is not told what the answer should be", () => {
 });
 
 describe("the parse-back schema", () => {
-  it("asks for one reading per entry and no more", () => {
+  it("confines each reading to an entry that was actually sent", () => {
     const schema = parseBackSchema(FRAME, ["s0", "s1", "s2"]);
     const readings = schema.properties?.readings;
-    expect(readings?.minItems).toBe(3);
-    expect(readings?.maxItems).toBe(3);
     expect(readings?.items?.properties?.id.enum).toEqual(["s0", "s1", "s2"]);
+  });
+
+  it("does NOT bound the array, which is what a live 400 taught it", () => {
+    // Measured on gemini-3.8-flash, 2026-09-20: with `minItems`/`maxItems` the
+    // request is rejected outright once the count passes about thirteen,
+    // because each item is a seventeen-branch `anyOf`. Asserted here so that
+    // somebody tidying the schema up puts them back and finds out in a test
+    // rather than in a paid batch.
+    const schema = parseBackSchema(FRAME, ["s0", "s1", "s2"]);
+    expect(schema.properties?.readings.minItems).toBeUndefined();
+    expect(schema.properties?.readings.maxItems).toBeUndefined();
   });
 
   it("requires the extra-claims list, so silence is a choice and not an omission", () => {
