@@ -214,7 +214,20 @@ Next: wave 6, free-text interrogation. It inherits the whole `llm/` seam, and in
 wave 5's writer prompt — solve it the same way, in the type of the input rather than in
 a comment.
 
-## How it plays (2026-09-20, template text only)
+## How it plays (wave 4's verdict, in template text)
+
+**What wave 5 changed, and what it did not.** Cases with a key, and the three shipped in
+`static/cases/starter/`, now read in written prose — "The coroner's assessment establishes
+that Gregory Bell was killed between nine o'clock and eleven o'clock" — and item 1 below
+is fixed for them. **But nobody has played a dressed case end to end.** It has been opened,
+read, verified card by card and driven through the briefing by a script; it has not been
+solved by a person, or by the scripted player, from first question to accusation. Items 2
+to 4 below were measured on template text and may read differently with names on them —
+the Expert cast list in particular, where 146 questions are now 146 *named* questions,
+which could be better or much worse. Wave 8's polish pass should settle it, and should
+not assume wave 4's answers still hold.
+
+The rest of this section is wave 4's verdict, unchanged.
 
 The plan's fun risk says to stop and say so if the puzzle does not stand up on its own.
 It does. This is the honest version, written after driving the real app through all four
