@@ -49,6 +49,16 @@ is documented to the standard of its siblings.
    and `game/writing.test.ts` drives it.*
 6. **Export and import** a whole case as a file, so a generated case can be shared with
    its prose. The key is never part of it.
+   *Done, in the pack format rather than a second one — `llm/pack.ts` already encodes a
+   whole case with its skin and handles the four containers `JSON.stringify` drops. Three
+   things the task statement did not say. A file is the **one way a case reaches a player
+   with nobody having certified it** — a shipped pack is proved by the authoring tool and
+   again by `shipped.test.ts`, a generated case twice as it is made — so `importCase`
+   re-runs `verifyPack` on the way in and refuses a file whose evidence does not prove the
+   answer it claims. The **pictures are dropped and the file says so**, because
+   `CasePack.images` lists keys and not bytes; monograms are the honest default and cost
+   nothing. And the **progress is dropped too**: this shares a case, not a save, and a
+   half-solved export would hand over the answer in the shape of the marks.*
 7. **Docs.** Finish `docs/ARCHITECTURE.md`. Rewrite `README.md` from the plan-phase
    version into the siblings' shape: pitch, what makes it different, controls, development,
    how it works. Bring `CLAUDE.md` up to date, including a "How to add a clue type"

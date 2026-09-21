@@ -15,6 +15,7 @@
     goto,
     loading,
     newCase,
+    openCaseFile,
     openCaseText,
     openPackCase,
     panel,
@@ -26,6 +27,7 @@
   import { totalSolved } from "$lib/game/stats";
   import { loadManifest } from "$lib/llm/packLoader";
   import { LESSONS, TUTORIAL_PACK } from "$lib/game/tutorial";
+  import { pickFile } from "./download";
   import type { PackEntry } from "$lib/llm/pack";
 
   let typed = $state("");
@@ -60,6 +62,27 @@
   });
 
   const busy = $derived($loading !== null);
+
+  /**
+   * An imported case is re-proved before it opens, which is a second or so on
+   * a large one — hence the flag: the button says what it is doing rather
+   * than appearing to have been ignored. See `game/transfer.ts#importCase`.
+   */
+  let opening = $state(false);
+
+  async function openFile() {
+    const text = await pickFile(".json,application/json");
+    if (text === null) return;
+    opening = true;
+    // A frame, so the label above paints before `importCase` blocks the
+    // thread running the exhaustive solver.
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    try {
+      openCaseFile(text);
+    } finally {
+      opening = false;
+    }
+  }
 
   async function open() {
     const text = typed.trim();
@@ -169,6 +192,13 @@
       />
       <button class="btn" type="submit" disabled={busy || typed.trim() === ""}>Open</button>
     </form>
+    <p class="aside">
+      A case number rebuilds the puzzle but not the prose. To pass on a written
+      case, use the file — <em>Save to a file</em> is on the briefing screen.
+      <button class="linky" disabled={busy || opening} onclick={openFile}>
+        {opening ? "Checking the case…" : "Open a case file"}
+      </button>
+    </p>
     {#if $panel.kind === "error"}
       <p class="oops">{$panel.text}</p>
     {/if}
@@ -298,6 +328,24 @@
     margin: 0 0 18px;
     font-size: 0.8rem;
     color: var(--text-dim);
+  }
+
+  /* A button that reads as part of the sentence it sits in: the action is
+     rare enough that a full-width control would be the loudest thing on a
+     screen whose job is to start a case. */
+  .linky {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--accent);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .linky:disabled {
+    color: var(--text-dim);
+    cursor: default;
   }
 
   .case {

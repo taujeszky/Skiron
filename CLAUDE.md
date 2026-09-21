@@ -188,6 +188,15 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 - **A service worker path from `$service-worker` carries the deployment's base path.**
   Comparing a whole path against a fixed set is correct at the root and silently wrong
   anywhere else - and nothing fails, it just looks wrong offline. Match on the suffix.
+- **`import("/src/...")` inside a CDP `Runtime.evaluate` gives you a SECOND module
+  instance, whose stores are not the running app's.** Wave 8 called `openCaseFile` that
+  way to check the import path: it returned `true`, no screen changed and no error panel
+  appeared, because the function had run against a private copy of `controller.ts` with
+  its own `screen` and `panel` writables. Same family as the HMR second-instance trap,
+  and the same rule fixes it — **drive the app's own buttons**. Where a control opens a
+  file dialog, override `document.createElement` for the tag it makes, give the element a
+  `click` that builds a `File` through `DataTransfer` and dispatches `change`, and put
+  `createElement` back afterwards.
 - vitest sometimes swallows `console.log`; write debug output to a file instead.
 - `../index.html` (the portfolio catalog) has very long lines of embedded art and cannot
   be read whole; read it in slices.

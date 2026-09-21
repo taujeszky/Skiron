@@ -11,7 +11,9 @@
 <script lang="ts">
   import { difficultyLabel } from "$lib/engine/solver/difficulty";
   import { isRuleKind } from "$lib/engine/types";
-  import { artUrls, explain, game, goto } from "$lib/game/controller";
+  import { artUrls, explain, exportCurrentCase, game, goto } from "$lib/game/controller";
+  import { FILE_MIME } from "$lib/game/transfer";
+  import { save } from "./download";
   import { portraitKey, SCENE_KEY } from "$lib/llm/art/prompts";
   import Coach from "./Coach.svelte";
   import Plan from "./Plan.svelte";
@@ -29,6 +31,16 @@
   // Wave 7. Absent is the normal state — no key, art off, or simply not back
   // yet — and every branch below renders without it.
   const scene = $derived($artUrls[SCENE_KEY] ?? null);
+
+  /**
+   * Wave 8, task 6. Offered here rather than mid-game because what travels is
+   * the case and not the save — see `game/transfer.ts` — so the briefing,
+   * before anything has been collected, is exactly what the file contains.
+   */
+  function saveToFile(): void {
+    const out = exportCurrentCase();
+    if (out) save(out.name, out.text, FILE_MIME);
+  }
 </script>
 
 <div class="screen" data-screen="briefing">
@@ -44,7 +56,16 @@
           )} · <span class="id">{g.text}</span>
         </p>
       </div>
-      <button class="btn small" onclick={() => goto("home")}>‹ Desk</button>
+      <div class="head-buttons">
+        <button
+          class="btn small"
+          onclick={saveToFile}
+          title="Save this case, with its prose, as a file you can send"
+        >
+          Save to a file
+        </button>
+        <button class="btn small" onclick={() => goto("home")}>‹ Desk</button>
+      </div>
     </header>
 
     <Coach />
@@ -130,6 +151,13 @@
 </div>
 
 <style>
+  .head-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
   .scene {
     /* A fixed ratio so the layout does not jump when the image arrives
        several seconds after the text. */

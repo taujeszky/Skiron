@@ -85,6 +85,7 @@ import {
 } from "./notebook";
 import type { History, Notebook } from "./notebook";
 import { rate } from "./rating";
+import { exportCase, importCase } from "./transfer";
 import { TUTORIAL_PACK, lessonFor } from "./tutorial";
 import type { CoachState, Lesson } from "./tutorial";
 import type { Rating } from "./rating";
@@ -466,6 +467,42 @@ export async function openPackCase(
   if (save !== undefined && !fits) clearSave();
   showGame(gameFor(caseId, loaded.case, loaded.skin, restored), restored);
   return true;
+}
+
+/**
+ * Open a case that arrived as a file (wave 8, task 6).
+ *
+ * Between the two paths above rather than a third kind of thing: the case
+ * comes whole, like a pack case, but it belongs to no pack — so `packName`
+ * stays null and the save will rebuild it from its id, which for a file is
+ * the honest answer. A player who wants it back should keep the file.
+ *
+ * `importCase` has already re-proved it; this never opens an unverified one.
+ */
+export function openCaseFile(text: string): boolean {
+  cancelLoad();
+  const out = importCase(text);
+  if (!out.ok) {
+    panel.set({ kind: "error", text: out.why });
+    return false;
+  }
+  const caseId = parseCaseId(out.pack.id);
+  if (!caseId) {
+    panel.set({ kind: "error", text: "That case has no valid case number." });
+    return false;
+  }
+  // A file carries no pictures, so there is nothing to point at (see
+  // `transfer.ts`), and it came from no pack, so nothing to record in a save.
+  packArt = null;
+  packName.set(null);
+  showGame(gameFor(caseId, out.pack.case, out.pack.skin), undefined);
+  return true;
+}
+
+/** The case on screen, as bytes to save. Null when there is no case. */
+export function exportCurrentCase(): { name: string; text: string } | null {
+  const g = get(game);
+  return g ? exportCase(g.id, g.case, g.skin) : null;
 }
 
 async function open(id: CaseId, save?: Save, dress?: string): Promise<void> {
