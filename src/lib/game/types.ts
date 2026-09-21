@@ -139,6 +139,19 @@ export interface ChatTurn {
 export interface Save {
   /** The formatted case id — `SK1-N-3f9k2a`. The whole case, in twelve bytes. */
   id: string;
+  /**
+   * The pack this case was read out of, absent when it was generated here.
+   *
+   * **The one thing an id is not enough for.** Everywhere else a save holds
+   * only the id because a case is a pure function of it (invariant 4), and a
+   * pack is the documented exception: it stores the whole case *because* the
+   * id may stop rebuilding it — see `llm/pack.ts`. So a save that remembered
+   * only the id would resume a shipped case by regenerating it, which throws
+   * away the prose and the pictures that came in the file and, after any
+   * tuning change to the generator, hands back a different puzzle with the
+   * old marks on it. Wave 8 found this by trying to resume the tutorial.
+   */
+  pack?: string;
   /** Card ids, in the order they were collected. Card numbering follows it. */
   collected: ClueId[];
   /** Distinct actions already taken, in order. `spent.length` is the count. */

@@ -13,6 +13,20 @@ is documented to the standard of its siblings.
    lying — with coach marks that teach the loop: examine, ask, pencil-mark, deduce, accuse.
    A second short lesson introduces lying and the idea of clearing someone to trust them.
    Both are verified by the same pack test as every other case.
+   *Done, with three corrections the code forced. **(a)** Lesson two needs **five** slots,
+   not four: with lying on, a four-slot case has nowhere for a false alibi to live and the
+   trust tier never fires, so it graded below the floor every time. Three suspects and four
+   rooms held. **(b)** "The idea of clearing someone to trust them" is **not a rule you can
+   point at.** The solver's only two tier-3 rules are `self-incrimination` and
+   `conflict-pair`; trust is the mechanism underneath them
+   (`solver/state.ts#trustedMask`), and it becomes visible only as the *payoff* of a
+   tier-3 step — a cleared suspect's card suddenly being worth something. The seed chosen
+   for lesson two shows exactly that in four consecutive trace steps, which is the nearest
+   this can get to teaching it directly. **(c)** The coach marks are a **strip of text that
+   reads the game state**, not a spotlight over a button: a spotlight needs every step to
+   name a live DOM node, which ties the lesson to the markup of four components and breaks
+   silently when one is rearranged — and the UI is not tested, so nothing would catch it.
+   `game/tutorial.ts` argues it at length.*
 2. **Balance pass.** Rerun `npm run sim`, play several cases at each difficulty, and
    adjust presets, par and the clue-type mix. Record the final table.
 3. **Accessibility.** Keyboard access to everything, visible focus, ARIA labels on the map
@@ -89,6 +103,24 @@ only, never the shape. So there are two routes and they are not close in cost:
 The second is much the smaller change and fits what a pack already is. Either
 way the tutorial ships as a pack file and `shipped.test.ts` proves it on every
 `npm test` like the other twelve.
+
+*Taken: the pack, with a `shape` override added to `GenerateOptions` beside
+`select`. `npm run tutorial` builds both lessons — deterministic, offline and
+free, because the skin carries names and no per-clue prose, so every card
+falls back to the engine's own sentence rendered in the tutorial's names. That
+is the right register for a lesson anyway: uniform, predictable, and nothing a
+model could get wrong because no model was asked.*
+
+*Two things this turned up that the analysis above did not predict.* **A
+shipped case could not be resumed.** `Save` held only the id, so "Carry on"
+rebuilt a pack case from its id — which is precisely what `pack.ts` says must
+not be relied on — and the prose and pictures that came in the file were
+silently dropped. `Save.pack` fixes it and `game/resume.test.ts` pins it, for
+all twelve shipped cases and not only the tutorial. *And* **stats needed the
+same guard the fifth-preset route would have needed:** `recordStart`,
+`recordSolve` and `recordAbandon` all had to learn to skip a lesson. The
+objection to a fifth preset — "a tutorial is not a difficulty anybody should
+have a best time in" — was never really about the preset.
 
 Two things that follow. The pack directory is `static/cases/starter/` and its
 manifest is **derived from the files beside it**, not from what a run wrote —

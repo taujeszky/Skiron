@@ -45,6 +45,7 @@
   } from "$lib/game/controller";
   import { formatDuration } from "$lib/game/rating";
   import { examineKey } from "$lib/game/types";
+  import Coach from "./Coach.svelte";
   import Grid from "./Grid.svelte";
   import Panel from "./Panel.svelte";
   import Plan from "./Plan.svelte";
@@ -118,6 +119,8 @@
       </span>
     </div>
   </header>
+
+  <Coach />
 
   <nav class="tabs">
     <button class:on={$pane === "map"} onclick={() => pane.set("map")}>Map</button>

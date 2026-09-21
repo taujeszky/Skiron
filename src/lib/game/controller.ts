@@ -14,10 +14,13 @@
  *   (invariant 5). `accuse` compares with `case.world` and `checkNotebook`
  *   calls `notebookIsSound`, which does the same. A deduction bug can make
  *   the hints useless; it may never hand out or withhold a win.
- * - **A save holds an id and nothing else about the case** (invariant 4 doing
- *   real work). `resume` rebuilds from the id and then checks the rebuilt
- *   frame against the notebook it was handed, because a save written by an
- *   older Skiron can parse perfectly and still describe a different house.
+ * - **A save holds an id, and the pack the case came out of if it came out of
+ *   one** (invariant 4 doing real work). `resume` rebuilds from the id and
+ *   then checks the rebuilt frame against the notebook it was handed, because
+ *   a save written by an older Skiron can parse perfectly and still describe a
+ *   different house. The pack is the exception the id cannot cover: a shipped
+ *   case is stored whole *because* its id may stop rebuilding it, so resuming
+ *   one reopens the file instead. See `Save.pack`.
  * - **The card list the player sees is the card list the hints count from.**
  *   `explainer` numbers cards by their position in the list it is given, so
  *   "Card 3" in a hint means Card 3 in the evidence pane only as long as
@@ -82,6 +85,8 @@ import {
 } from "./notebook";
 import type { History, Notebook } from "./notebook";
 import { rate } from "./rating";
+import { TUTORIAL_PACK, lessonFor } from "./tutorial";
+import type { CoachState, Lesson } from "./tutorial";
 import type { Rating } from "./rating";
 import { recordAbandon, recordSolve, recordStart } from "./stats";
 import {
@@ -150,6 +155,21 @@ export interface Game {
    */
   chat: ChatTurn[];
   history: History;
+  /**
+   * How many times the player has edited the notebook by hand.
+   *
+   * Not `history.past.length`, which counts auto-notes too — collecting a
+   * card pushes a state — and not the number of marks on the grid, which
+   * starts non-zero because a case opens with the case file's consequences
+   * already pencilled in. The tutorial's notebook step needs "has this person
+   * touched the grid yet", and this is the only thing that answers it.
+   *
+   * Not persisted, on purpose: it steers a coach mark and nothing else, and a
+   * resumed lesson re-offering "the notebook is where you think" costs
+   * nothing, where a new field in `Save` would have to be parsed, validated
+   * and lived with for ever.
+   */
+  edits: number;
   /** Cards released by an action, in the order they came. */
   collected: ClueId[];
   /** Distinct actions taken, in order. */
@@ -390,6 +410,12 @@ export async function resume(): Promise<boolean> {
     clearSave();
     return false;
   }
+  // A shipped case is reopened from its file, never rebuilt from its id. See
+  // `Save.pack`: rebuilding is what would silently drop the prose and the
+  // pictures that came with it.
+  if (save.pack !== undefined) {
+    return await openPackCase(save.id, save.pack, save);
+  }
   await open(id, save);
   return get(game) !== null;
 }
@@ -402,7 +428,11 @@ export async function resume(): Promise<boolean> {
  * to wait for, and the skin comes with it. Needs no key and no network beyond
  * the file itself, which the service worker has already cached.
  */
-export async function openPackCase(id: string, pack?: string): Promise<boolean> {
+export async function openPackCase(
+  id: string,
+  pack?: string,
+  save?: Save,
+): Promise<boolean> {
   cancelLoad();
   loading.set({ id: parseCaseId(id) ?? newCaseId("easy", "0"), label: "Opening the case…", cancel: cancelLoad });
   const { loadPackCase } = await import("$lib/llm/packLoader");
@@ -418,20 +448,29 @@ export async function openPackCase(id: string, pack?: string): Promise<boolean> 
   // are files that came with the site, so there is nothing to generate and
   // nothing to pay for — which is the whole point of shipping a pack.
   const { DEFAULT_PACK } = await import("$lib/llm/packLoader");
+  const name = pack ?? DEFAULT_PACK;
   packArt =
     loaded.images.length > 0
-      ? { base: `/cases/${pack ?? DEFAULT_PACK}/${loaded.id}`, keys: loaded.images }
+      ? { base: `/cases/${name}/${loaded.id}`, keys: loaded.images }
       : null;
-  showGame(gameFor(caseId, loaded.case, loaded.skin), undefined);
+  // Remembered so that `flush` can write it into the save and `resume` can
+  // come back here rather than rebuilding the case from its id.
+  packName.set(name);
+  const fits = save !== undefined && notebookFits(loaded.case.frame, save.notebook);
+  const restored = fits ? save : undefined;
+  if (save !== undefined && !fits) clearSave();
+  showGame(gameFor(caseId, loaded.case, loaded.skin, restored), restored);
   return true;
 }
 
 async function open(id: CaseId, save?: Save, dress?: string): Promise<void> {
   cancelLoad();
-  // A generated case has no shipped pictures. Cleared here rather than left
-  // over from whatever was opened before, which would point this case's
-  // portraits at another case's files.
+  // A generated case has no shipped pictures and came out of no pack. Both
+  // cleared here rather than left over from whatever was opened before,
+  // which would point this case's portraits at another case's files and make
+  // its save claim to be a shipped one.
   packArt = null;
+  packName.set(null);
   const run = loadCase(id);
   inFlight = run;
   loading.set({
@@ -465,44 +504,21 @@ async function open(id: CaseId, save?: Save, dress?: string): Promise<void> {
   const restored = fits ? (save as Save) : undefined;
   if (save !== undefined && !fits) clearSave();
 
-  const held = new Set(built.bank.cards.keys());
-  const next: Game = {
-    id,
-    text: formatCaseId(id),
-    case: built,
-    // Filled in by `dressCase` once the writing is done, or left null for a
-    // case played in the engine's own words.
-    skin: null,
-    // A turn naming somebody this frame does not have is from a save written
-    // against a different house. The notebook check below catches that too,
-    // but this one runs whether or not the notebook fits.
-    chat: restored ? restored.chat.filter((turn) => turn.who < frame.people) : [],
-    // A fresh case starts with whatever the case file already implies — the
-    // body's last cell, and anything the movement rules force from it. The
-    // headless play-through is what turned this up: auto-notes fired on a
-    // collected card and the opening is never collected, so the grid sat
-    // blank while the hint panel recited deductions the setting had promised
-    // to make. A restored notebook is left exactly as it was saved, because
-    // the player may have undone some of it on purpose.
-    history: newHistory(
-      restored
-        ? cloneNotebook(restored.notebook)
-        : get(settings).autoNotes
-          ? autoNotes(frame, built.opening, newNotebook(frame))
-          : newNotebook(frame),
-    ),
-    // A card id from a save that the rebuilt bank does not hold would be a
-    // determinism failure, not a stale save — but dropping it here costs
-    // nothing and keeps a broken one from crashing the evidence pane.
-    collected: restored ? restored.collected.filter((c) => held.has(c)) : [],
-    spent: restored ? restored.spent : [],
-    wrong: restored ? restored.wrong : [],
-    hints: restored ? restored.hints : 0,
-    checks: restored ? restored.checks : 0,
-    ms: restored ? restored.ms : 0,
-    since: restored?.solved ? 0 : now(),
-    solved: restored?.solved ?? false,
-  };
+  // The two things `gameFor` is trusted with, spelled out here because they
+  // are both the fix for a real bug rather than obvious. A turn naming
+  // somebody this frame does not have is from a save written against a
+  // different house, and is dropped whether or not the notebook fits. And a
+  // *fresh* case starts with whatever the case file already implies — the
+  // body's last cell, and anything the movement rules force from it: the
+  // headless play-through found auto-notes firing on a collected card, and
+  // the opening is never collected, so the grid sat blank while the hint
+  // panel recited deductions the setting had promised to make. A restored
+  // notebook is left exactly as saved, because the player may have undone
+  // some of it on purpose.
+  //
+  // `skin` is null here and filled in by `dressCase` below, or left null for
+  // a case played in the engine's own words.
+  const next: Game = gameFor(id, built, null, restored);
 
   // The writing phase. It runs before the case is shown, because a case whose
   // names change under the player halfway through a sitting would be worse
@@ -530,7 +546,12 @@ function showGame(next: Game, restored: Save | undefined): void {
   questioning.set(null);
   evidenceFilter.set({ person: -1, slot: -1, room: -1 });
 
-  if (!restored) {
+  // A lesson is not a case anybody has a record in. It is the same engine,
+  // the same certificates and the same pack format, but three tutorials in
+  // the Hard column beside real cases would be a lie about what somebody has
+  // done - which is the objection that ruled out making the tutorial a fifth
+  // preset, and it applies just as much here.
+  if (!restored && !inTutorial()) {
     stats.update((s) => {
       const out = recordStart(s, next.case.difficulty);
       saveStats(out);
@@ -546,27 +567,42 @@ function showGame(next: Game, restored: Save | undefined): void {
   startArt(next);
 }
 
-/** A fresh `Game` around a case that is already built. */
-function gameFor(id: CaseId, built: GeneratedCase, skin: CaseSkin | null): Game {
+/**
+ * A `Game` around a case that is already built, fresh or restored.
+ *
+ * `restored` must already have been checked against this frame — see
+ * `notebookFits`, which both callers run before getting here.
+ */
+function gameFor(
+  id: CaseId,
+  built: GeneratedCase,
+  skin: CaseSkin | null,
+  restored?: Save,
+): Game {
+  const frame = built.frame;
+  const held = new Set(built.bank.cards.keys());
   return {
     id,
     text: formatCaseId(id),
     case: built,
     skin,
-    chat: [],
+    chat: restored ? restored.chat.filter((turn) => turn.who < frame.people) : [],
     history: newHistory(
-      get(settings).autoNotes
-        ? autoNotes(built.frame, built.opening, newNotebook(built.frame))
-        : newNotebook(built.frame),
+      restored
+        ? cloneNotebook(restored.notebook)
+        : get(settings).autoNotes
+          ? autoNotes(frame, built.opening, newNotebook(frame))
+          : newNotebook(frame),
     ),
-    collected: [],
-    spent: [],
-    wrong: [],
-    hints: 0,
-    checks: 0,
-    ms: 0,
-    since: now(),
-    solved: false,
+    edits: 0,
+    collected: restored ? restored.collected.filter((c) => held.has(c)) : [],
+    spent: restored ? restored.spent : [],
+    wrong: restored ? restored.wrong : [],
+    hints: restored ? restored.hints : 0,
+    checks: restored ? restored.checks : 0,
+    ms: restored ? restored.ms : 0,
+    since: restored?.solved ? 0 : now(),
+    solved: restored?.solved ?? false,
   };
 }
 
@@ -688,6 +724,64 @@ let artRun = 0;
  * game object that two other code paths construct.
  */
 let packArt: { base: string; keys: string[] } | null = null;
+
+/**
+ * Which pack the case on screen came out of, or null when it was generated.
+ *
+ * Beside `packArt` and cleared in the same two places, because it answers the
+ * same question about the same case. `flush` writes it into the save so that
+ * `resume` can reopen the file instead of rebuilding the case — see
+ * `Save.pack` for what rebuilding silently costs.
+ */
+const packName: Writable<string | null> = writable(null);
+
+/**
+ * Which pack the case on screen came from, for the screens that care.
+ *
+ * Only the tutorial cares, and it cares about two things: whether to show the
+ * coach strip, and whether this case counts in the player's statistics. A
+ * lesson must not: three of them in the Hard column beside real cases would
+ * be a lie about what somebody has done.
+ */
+export const pack: Readable<string | null> = derived(packName, (p) => p);
+
+/** Is the case on screen one of the lessons? */
+function inTutorial(): boolean {
+  return get(packName) === TUTORIAL_PACK;
+}
+
+/** The lesson being taken, or null. */
+export const lesson: Readable<Lesson | null> = derived(
+  [game, packName],
+  ([g, p]) => (g && p === TUTORIAL_PACK ? lessonFor(g.text) : null),
+);
+
+/** What the coach strip reads. Everything here is already in `Game`. */
+export const coach: Readable<CoachState | null> = derived(
+  [game, lesson],
+  ([g, l]) => {
+    if (!g || !l) return null;
+    let examined = 0;
+    let asked = 0;
+    for (const key of g.spent) {
+      if (key.startsWith("examine:")) examined++;
+      else if (key.startsWith("ask:")) asked++;
+    }
+    return {
+      examined,
+      asked,
+      cards: g.collected.length,
+      // The player's own edits, not the number of marks on the grid: with
+      // auto-notes on, a case opens with the case file's consequences already
+      // pencilled in, so counting marks would retire the notebook step before
+      // the player had touched it.
+      marked: g.edits,
+      hints: g.hints,
+      wrong: g.wrong.length,
+      solved: g.solved,
+    };
+  },
+);
 
 /** Injected by tests, exactly as `useAskProvider` is. */
 let artProvider: (() => Provider) | null = null;
@@ -831,7 +925,7 @@ export function cancelLoad(): void {
  */
 export function abandon(): void {
   const g = get(game);
-  if (g && !g.solved) {
+  if (g && !g.solved && !inTutorial()) {
     stats.update((s) => {
       const out = recordAbandon(s, g.case.difficulty);
       saveStats(out);
@@ -1140,7 +1234,7 @@ function edit(fn: (frame: CaseFrame, n: Notebook) => Notebook): void {
   if (!g || g.solved) return;
   const next = push(g.history, fn(g.case.frame, g.history.present));
   if (next === g.history) return;
-  game.set({ ...g, history: next });
+  game.set({ ...g, history: next, edits: g.edits + 1 });
   flush();
 }
 
@@ -1305,6 +1399,11 @@ export function accuse(culprit: PersonId, slot: SlotIndex): Verdict {
   const ms = elapsed(g);
   const solvedGame: Game = { ...g, solved: true, ms, since: 0 };
   game.set(solvedGame);
+  if (inTutorial()) {
+    flush();
+    screen.set("summary");
+    return { right, culprit, slot };
+  }
   stats.update((s) => {
     const out = recordSolve(s, {
       difficulty: g.case.difficulty,
@@ -1416,6 +1515,8 @@ export function flush(): void {
     solved: g.solved,
     chat: g.chat,
   };
+  const from = get(packName);
+  if (from !== null) save.pack = from;
   writeSave(save);
 }
 

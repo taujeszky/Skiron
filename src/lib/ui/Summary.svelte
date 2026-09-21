@@ -23,13 +23,16 @@
     explain,
     game,
     goto,
+    lesson,
     newCase,
+    openPackCase,
     rating,
     settings,
     summingUp,
     summingUpCards,
   } from "$lib/game/controller";
   import { formatDuration } from "$lib/game/rating";
+  import { LESSONS, TUTORIAL_PACK } from "$lib/game/tutorial";
   import CardView from "./CardView.svelte";
   import Plan from "./Plan.svelte";
   import Token from "./Token.svelte";
@@ -47,6 +50,11 @@
    * reasoning must never have to take a model's word for it.
    */
   const speech = $derived(g.skin?.summingUp ?? null);
+
+  /** The lesson after this one, when this was a lesson and there is one. */
+  const next = $derived(
+    $lesson ? (LESSONS.find((l) => l.n === $lesson.n + 1) ?? null) : null,
+  );
 
   /** Blank-line-separated paragraphs, which is how the speech is asked for. */
   function paragraphs(text: string): string[] {
@@ -110,6 +118,21 @@
         {/each}
       </span>
     </header>
+
+    {#if $lesson}
+      <!-- A lesson ends with what it was for, and with the way on. The score
+           panel below still shows, because a player who has just been taught
+           the loop should see what the loop is scored against. -->
+      <aside class="outro">
+        <strong>{$lesson.name} — done.</strong>
+        <p>{$lesson.outro}</p>
+        {#if next}
+          <button class="btn" onclick={() => openPackCase(next.id, TUTORIAL_PACK)}>
+            {next.name} ›
+          </button>
+        {/if}
+      </aside>
+    {/if}
 
     <section class="score">
       <div class="verdict">
@@ -220,6 +243,28 @@
 </div>
 
 <style>
+  .outro {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.8rem 1rem;
+    margin-bottom: 14px;
+    border: 1px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+    border-radius: 0.5rem;
+  }
+
+  .outro strong {
+    color: var(--accent);
+  }
+
+  .outro p {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.45;
+  }
+
   .speech {
     margin: 0 0 12px;
     line-height: 1.6;

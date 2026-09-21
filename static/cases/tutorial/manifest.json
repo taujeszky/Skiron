@@ -1,0 +1,22 @@
+{
+  "packVersion": 1,
+  "name": "Learning the ropes",
+  "cases": [
+    {
+      "id": "SK1-E-tut1",
+      "title": "A Night at the Fleece",
+      "setting": "a village inn on a wet night",
+      "preset": "easy",
+      "fallbacks": 0,
+      "images": 0
+    },
+    {
+      "id": "SK1-H-tut2",
+      "title": "The Room at the Top",
+      "setting": "a boarding house on a harbour front",
+      "preset": "hard",
+      "fallbacks": 0,
+      "images": 0
+    }
+  ]
+}

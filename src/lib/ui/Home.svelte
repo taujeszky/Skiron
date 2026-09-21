@@ -25,6 +25,7 @@
   } from "$lib/game/controller";
   import { totalSolved } from "$lib/game/stats";
   import { loadManifest } from "$lib/llm/packLoader";
+  import { LESSONS, TUTORIAL_PACK } from "$lib/game/tutorial";
   import type { PackEntry } from "$lib/llm/pack";
 
   let typed = $state("");
@@ -85,6 +86,24 @@
         <span class="small">{saved}</span>
       </button>
     {/if}
+
+    <h2>New here?</h2>
+    <div class="lessons">
+      {#each LESSONS as l (l.id)}
+        <button
+          class="case lesson"
+          disabled={busy}
+          onclick={() => openPackCase(l.id, TUTORIAL_PACK)}
+        >
+          <span class="big">{l.name}</span>
+          <span class="small">{l.blurb}</span>
+        </button>
+      {/each}
+    </div>
+    <p class="aside">
+      Both are real cases, proved fair the same way as every other. They do not
+      count towards your record.
+    </p>
 
     <h2>A new case</h2>
     {#if dressable}
@@ -256,11 +275,29 @@
     opacity: 0.85;
   }
 
-  .shelf {
+  .shelf,
+  .lessons {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
     gap: 8px;
     margin-bottom: 18px;
+  }
+
+  .lessons {
+    margin-bottom: 6px;
+  }
+
+  /* Marked out from the twelve shipped cases below: same shape of button,
+     borrowed accent, so it reads as the way in rather than as a thirteenth
+     case. */
+  .lesson {
+    border-color: var(--accent);
+  }
+
+  .aside {
+    margin: 0 0 18px;
+    font-size: 0.8rem;
+    color: var(--text-dim);
   }
 
   .case {

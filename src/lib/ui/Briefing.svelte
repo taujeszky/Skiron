@@ -13,6 +13,7 @@
   import { isRuleKind } from "$lib/engine/types";
   import { artUrls, explain, game, goto } from "$lib/game/controller";
   import { portraitKey, SCENE_KEY } from "$lib/llm/art/prompts";
+  import Coach from "./Coach.svelte";
   import Plan from "./Plan.svelte";
   import Token from "./Token.svelte";
   import { suspectIds } from "./look";
@@ -45,6 +46,8 @@
       </div>
       <button class="btn small" onclick={() => goto("home")}>‹ Desk</button>
     </header>
+
+    <Coach />
 
     {#if scene}
       <!-- Decoration, and deliberately nowhere near the evidence pane: an

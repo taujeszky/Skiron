@@ -45,7 +45,7 @@ import type { CaseId } from "../caseId";
 import { buildFloorPlan } from "../map";
 import { RNG } from "../rng";
 import { acceptsTier, difficultyForTier, presetFor } from "../solver/difficulty";
-import type { Preset } from "../solver/difficulty";
+import type { Preset, PresetShape } from "../solver/difficulty";
 import { answerKey, answers } from "../solver/exhaustive";
 import { solve } from "../solver/solve";
 import type { Step } from "../solver/state";
@@ -155,6 +155,23 @@ export interface GenerateOptions {
    * written down, and a case generated with it is not the case its id names.
    */
   select?: Partial<PresetTuning>;
+  /**
+   * Override the size of the case: how many suspects, rooms and slots, and
+   * whether the killer may lie.
+   *
+   * This exists for wave 8's tutorial, which has to be **smaller than any
+   * preset** — three suspects where Easy has four — and there was no way to
+   * ask for that: `select` overrides the clue mix and never the shape. The
+   * tier band, the case-file rule budget and the selection tuning still come
+   * from the named preset, because those are what "Easy" means once the size
+   * is settled.
+   *
+   * Like `select`, **a case generated with this is not the case its id
+   * names**, so it may only be used for a case that is then stored whole. The
+   * tutorial ships as a pack file, which is exactly that: see `pack.ts` on
+   * why a pack stores the case rather than the seed.
+   */
+  shape?: Partial<PresetShape>;
 }
 
 export interface GenerateResult {
@@ -180,7 +197,9 @@ export function generate(
   id: CaseId,
   opts: GenerateOptions = {},
 ): GenerateResult {
-  const preset = presetFor(id.preset);
+  const preset = opts.shape
+    ? { ...presetFor(id.preset), ...opts.shape }
+    : presetFor(id.preset);
   const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const rejections: Rejection[] = [];
   let simRetries = 0;

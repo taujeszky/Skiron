@@ -331,7 +331,16 @@ export function parseSave(v: unknown): Save | null {
   const ms = int(v.ms, 0, Number.MAX_SAFE_INTEGER);
   if (hints === null || checks === null || ms === null) return null;
 
-  return {
+  // The pack name becomes a URL path segment in `packLoader.ts`, so it is
+  // checked here rather than trusted: a save is a value a browser hands back,
+  // and `/cases/../../something/manifest.json` is the shape of the mistake.
+  // Absent, empty or malformed all mean the same thing — a generated case.
+  const pack =
+    typeof v.pack === "string" && /^[a-z0-9][a-z0-9-]{0,31}$/.test(v.pack)
+      ? v.pack
+      : undefined;
+
+  const save: Save = {
     id: v.id,
     collected,
     spent,
@@ -343,6 +352,8 @@ export function parseSave(v: unknown): Save | null {
     solved: bool(v.solved, false),
     chat: parseChat(v.chat),
   };
+  if (pack !== undefined) save.pack = pack;
+  return save;
 }
 
 /** A long interrogation, bounded so a corrupt save cannot be a huge one. */
