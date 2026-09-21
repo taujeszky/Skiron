@@ -383,10 +383,22 @@ doing what it said. Three of those were shipping bugs:
   element a leaf in the accessibility tree, so the `role="button"` on each room was
   never exposed. Keyboard-focusable and silent since wave 4.
 
-Next: **task 8, which is the whole public release and is entirely owner gates** - create
-`github.com/taujeszky/Skiron` and push, the first Cloudflare deploy, and the portfolio
-catalog entry. Nothing is published and no Cloudflare project exists. Then wave 9, which
-is optional.
+**Task 8 was offered to the owner on 2026-09-21 and held.** They were given all three
+(repo, deploy, catalog), repo-and-deploy, repo-only, or hold, and chose **hold all
+three**. So there is still no GitHub repository, no Cloudflare project and no catalog
+entry, and **that is a decision rather than an omission** - the second time they have
+deferred a deploy rather than publish before they are ready. Do not re-ask unless asked
+to. The repository was checked and is ready when they are: 296 files, 6.6 MB, nothing
+key-shaped tracked except obviously fake test constants.
+
+**The one thing wave 8 did not settle, and should not be read as settled:** *nobody has
+solved a case in words.* The balance pass measured the generator and par; item 3 of "How
+it plays" below - whether free text actually makes Expert's 146-question cast list
+bearable - needs a person or a paid live run, and the paid run is a gate nobody has
+asked for. Item 4 of that list *was* measured: the Expert notebook wants 759 px and gets
+719 on a 1440 laptop, 639 at 1280 and 390 on a phone, so it scrolls at every width.
+
+Next: wave 9 is optional and not planned in detail.
 
 ## How it plays (wave 4's verdict, in template text)
 

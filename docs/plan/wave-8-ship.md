@@ -40,6 +40,18 @@ is documented to the standard of its siblings.
    the p95 goes from 995 ms to 3322 ms and the worst case from 1442 ms to 3985 ms, on a
    laptop, for the slowest preset on the slowest device. Left alone, and the complaint —
    which is about the button, not the case — is answered on the home screen instead.*
+
+   ***What this task did NOT settle.*** *The handoff gave the balance pass two jobs and
+   only one of them is done. The generator numbers are measured. But "nobody has solved a
+   case in words" — item 3 of CLAUDE.md's "How it plays", the question of whether wave 6's
+   free-text interrogation actually makes Expert's 146-question cast list bearable — is
+   **still unmeasured**, because answering it needs either a person playing or a paid live
+   run, and the paid run is an owner gate that has not been asked for. It should not be
+   read as settled. Item 4 of that list was measured and is confirmed: the Expert notebook
+   wants 759 px and gets 719 on a 1440-wide laptop, 639 at 1280 and 390 on a phone, so it
+   scrolls horizontally at every width. Forty pixels would buy the largest laptop and
+   nothing else, which is not worth a layout change that could cost the phone — wave 4's
+   "inherent, not a bug" holds, now with numbers.*
 3. **Accessibility.** Keyboard access to everything, visible focus, ARIA labels on the map
    and grid, room codes as well as colours, reduced-motion handling for the replay,
    contrast in both themes.
@@ -105,8 +117,14 @@ is documented to the standard of its siblings.
    deploy; then add Skiron to the portfolio catalog — a `PROJECTS` entry in
    `../index.html` (that file has very long lines; read it in slices) and card art through
    `../catalog-art`.
-   *Not started: all three are owner gates and none has been asked for yet. Everything
-   else in the wave is done, so this is the only thing between Skiron and being public.*
+   ***Asked, and held.** 2026-09-21: the owner was offered all three (repo, deploy,
+   catalog), repo-and-deploy, repo-only, or hold, and chose **hold all three**. So nothing
+   outward-facing has happened: no GitHub repository, no Cloudflare project, no catalog
+   entry. This is the second time they have deferred a deploy rather than publish before
+   they are ready — the first was at the end of wave 4, which is how the deploy came to be
+   wave 8's in the first place. Do not re-ask without being asked to; the repository is
+   ready when they are. It was checked before asking: 296 files, 6.6 MB, no key-shaped
+   string anywhere tracked except obviously fake test constants, `.env*` ignored.*
 
 ## Exit criteria
 
@@ -123,7 +141,7 @@ is documented to the standard of its siblings.
   new. Both the sim and par tables are in ARCHITECTURE section 9.*
 - README, CLAUDE.md and ARCHITECTURE.md describe the project as it is. *Done.*
 
-**The wave is complete except task 8, which is three owner gates.**
+**The wave is complete except task 8, which is three owner gates — offered on 2026-09-21 and held by the owner.** The one other thing left open is named under task 2: nobody has yet solved a case in words, and saying so is not the same as having measured it.
 
 ---
 
