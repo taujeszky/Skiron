@@ -372,7 +372,12 @@ rhythm of asking is a rhythm rather than a slog.
 
 **One thing that reads as a bug and is not:** asking for Expert and being handed a case
 labelled Hard. The preset is a request and the tier the solver actually needed is the
-answer. The case number still says `SK1-X-`, which is the tell.
+answer. The case number still says `SK1-X-`, which is the tell. *Wave 8 measured how
+often: **29% of Expert requests land at Expert**, over 300 cases. It also priced the fix
+— `expert.tier.min` at 4 gives 100%, every case still generates, and the p95 goes from
+995 ms to 3322 ms — and declined it, because that lands on the slowest preset on the
+slowest device and the grade shown was already honest. The home screen now says so in a
+sentence instead. ARCHITECTURE section 9 has both tables.*
 
 Things a later wave will want to know, beyond what ARCHITECTURE.md records:
 

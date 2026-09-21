@@ -29,6 +29,17 @@ is documented to the standard of its siblings.
    `game/tutorial.ts` argues it at length.*
 2. **Balance pass.** Rerun `npm run sim`, play several cases at each difficulty, and
    adjust presets, par and the clue-type mix. Record the final table.
+   *Done, and **nothing was adjusted** — which is a result rather than a shortcut. 1200
+   cases over four presets reproduced wave 3's table at two and a half times the sample,
+   with zero certificate failures; `npm run par` over 160 fresh cases reproduced wave 4's
+   undirected means to the decimal (19.2 / 31.1 / 38.1 / 57.0). Both tables are in
+   ARCHITECTURE section 9. The one number worth arguing about is that **Expert delivers
+   Expert 29% of the time**, matching wave 7's 27%. Rather than argue, the alternative was
+   priced: with `expert.tier.min` raised to 4 every case still generates and every
+   certificate still passes, so a true Expert case is rare rather than hard to find — but
+   the p95 goes from 995 ms to 3322 ms and the worst case from 1442 ms to 3985 ms, on a
+   laptop, for the slowest preset on the slowest device. Left alone, and the complaint —
+   which is about the button, not the case — is answered on the home screen instead.*
 3. **Accessibility.** Keyboard access to everything, visible focus, ARIA labels on the map
    and grid, room codes as well as colours, reduced-motion handling for the replay,
    contrast in both themes.

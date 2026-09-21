@@ -602,6 +602,61 @@ hard           0.02          0.17       0.05  0.03        0.03
 expert         0.00          0.48       0.08  0.06        0.13
 ```
 
+### Re-measured in wave 8's balance pass, and left alone
+
+300 cases a preset, 1200 in all, same machine. **Zero certificate failures
+again**, and every case made.
+
+```
+preset  made     att  ms p50/p95/max   essential  bank  par  proof tier     play tier
+easy    300/300  1.96    14/  48/ 105   5 ( 2- 9)   27   19  0:59 1:241     0:82 1:218
+normal  300/300  1.24    34/  67/ 123   6 ( 2-17)   33   27  1:63 2:237     1:96 2:204
+hard    300/300  1.25   113/ 231/ 459   8 ( 2-27)   37   32  3:300         2:40 3:260
+expert  300/300  1.71   320/ 995/1442  10 ( 3-28)   44   42  3:134 4:166   3:213 4:87
+```
+
+Nothing was tuned. The table is here because a number nobody re-measures is a
+number nobody can trust, and this one reproduced: the shape, the rejection
+mix and the clue-type gradient are all wave 3's, at two and a half times the
+sample.
+
+**The one number worth arguing about: Expert delivers Expert 29% of the
+time** (87 of 300 by `playTier`), which matches wave 7's 27% over sixty
+seeds. A player who presses Expert gets a case labelled Hard seven times in
+ten. The band `{min: 3, max: 4}` is what allows that, and it is deliberate —
+the plan says the overlap is what stops an Expert request retrying until the
+seed space runs dry.
+
+So the balance pass priced the alternative instead of arguing about it. With
+`expert.tier.min` raised to 4, over 60 cases:
+
+```
+                 made   att  ms p50/p95/max   essential  bank  par  play tier
+min 3 (shipped)  300/300  1.71  320/ 995/1442  10 ( 3-28)  44   42  3:213 4:87
+min 4 (ablation)  60/60   5.73  934/3322/3985  11 ( 4-20)  45   43  4:60
+```
+
+Every case is still made inside the 24-attempt budget, and every certificate
+still passes — so it is not that a true Expert case is hard to *find*, only
+that it is rare. The cost is the p95: **995 ms becomes 3322 ms, and the worst
+case 1442 ms becomes 3985 ms**, on a developer laptop. Wave 3's exit criterion
+was a p95 under five seconds in a worker, so this fits — but only just, and a
+mid-range phone is several times slower than this machine. Wave 8's own exit
+criterion is about a first-time visitor on a phone.
+
+**Left at `min: 3`.** Three reasons, in order of weight. The slowdown lands on
+the preset that is already the slowest, on the device that is already the
+slowest, and "generation time in the browser" is a named risk in the plan. The
+grade the player is shown is already the honest one, so nothing is being
+concealed — the complaint is about the *button*, not the case. And changing a
+generation step means bumping `CASE_ID_VERSION` (invariant 4), which is free
+today only because nothing is published.
+
+What was done instead costs nothing: the home screen now says, under the four
+presets, that the grade is the reasoning the case turned out to need and can
+come in under the one asked for. Wave 4's "reads as a bug and is not" is a
+documentation failure, and it is fixed where the player meets it.
+
 The exit criterion was a p95 under five seconds in a worker. Expert's p95 is
 0.8 s and its worst case 1.0 s, so there is room to spare.
 

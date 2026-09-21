@@ -174,6 +174,12 @@
       </div>
     {/if}
 
+    <p class="aside">
+      A difficulty is a request. The grade you are shown is the reasoning the
+      case turned out to need, so asking for Expert can hand you a case marked
+      Hard — the case number still records what you asked for.
+    </p>
+
     <h2>A case by number</h2>
     <form
       class="bynumber"
