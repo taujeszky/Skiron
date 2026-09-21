@@ -228,6 +228,17 @@ function applyClue(d: Deduction, clue: Clue): void {
     case "BarredDoor":
     case "Capacity":
       return;
+
+    default: {
+      // An 18th clue kind must say what tier 0 takes from it, even if that is
+      // nothing. `applyClue` returns `void`, so without this the compiler
+      // cannot check the switch and a new kind would be propagated by the
+      // exhaustive oracle and silently ignored here — invariant 2's
+      // two-solver divergence, arriving as neither a type error nor a
+      // certificate failure. See CLAUDE.md, "the six switch sites".
+      const unreachable: never = b;
+      throw new Error(`no tier 0 rule for ${JSON.stringify(unreachable)}`);
+    }
   }
 }
 

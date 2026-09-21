@@ -10,15 +10,19 @@
  * **What this comment used to claim, and does not any more.** It said adding a
  * clue type is "a new file plus one line in `MODULES`". That was wave 1's
  * intention and it is not true: the *solver* and the *generator* switch on
- * kind in six places outside this directory, and only one of them
- * (`exhaustive.ts`, which ends in `const unreachable: never = b`) fails the
- * build when a kind is added. `ClueModule.propagate` — the slot meant to keep
- * the solver out of switch-land — is still `unknown` and has never been
- * filled. CLAUDE.md's "How to add a clue type" lists all six and says which
- * ones fail loudly. The dangerous two are `rules/tier0.ts` and
- * `rules/tier2.ts`, whose `applyClue` returns `void`, so TypeScript cannot
- * check them and a new kind would be silently ignored by the deduction solver
- * while the oracle handled it.
+ * kind in seven places outside this directory, and `ClueModule.propagate` —
+ * the slot meant to keep the solver out of switch-land — is still `unknown`
+ * and has never been filled. CLAUDE.md's "How to add a clue type" lists all
+ * seven.
+ *
+ * What has changed is the *consequence*. Five of the seven used to fall
+ * through to a `default`, so an 18th kind would have compiled and been
+ * quietly ignored — worst of all in `rules/tier0.ts` and `rules/tier2.ts`,
+ * whose `applyClue` returns `void`, where the deduction solver would have
+ * proved less than the oracle and no certificate would have noticed. All
+ * seven now end in a `never` binding, so an 18th kind is a build error in
+ * every one of them. The switches are still scattered; they are no longer
+ * silent.
  */
 
 import { testimonyBinds } from "../axioms";

@@ -305,8 +305,32 @@ function places(body: Clue["body"], p: PersonId, t: SlotIndex): boolean {
       return (body.p === p || body.q === p) && body.t === t;
     case "Stayed":
       return body.p === p && body.t1 <= t && t <= body.t2;
-    default:
+
+    // Spelled out rather than left to a `default`, so that an 18th kind has
+    // to be classified here instead of defaulting to "places nobody" and
+    // quietly widening the leak this guard exists to close. `Together` is the
+    // one that looks like it belongs above: it does put two people in the
+    // same room at `t`, but it never names the room, so it cannot account
+    // for anybody's whereabouts.
+    case "NotAt":
+    case "Together":
+    case "Occupied":
+    case "Empty":
+    case "Count":
+    case "Visited":
+    case "NeverVisited":
+    case "AliveAt":
+    case "DeathWindow":
+    case "DoorClosed":
+    case "BarredDoor":
+    case "BarredRoom":
+    case "Capacity":
       return false;
+
+    default: {
+      const unreachable: never = body;
+      throw new Error(`places: unknown kind ${JSON.stringify(unreachable)}`);
+    }
   }
 }
 

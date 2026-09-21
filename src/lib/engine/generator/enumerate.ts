@@ -141,7 +141,37 @@ export function enumerateClues(
  * fallback is right: the place to learn when somebody died is where they died.
  */
 function physical(kind: ClueKind): boolean {
-  return kind !== "Together";
+  switch (kind) {
+    case "Together":
+      return false;
+
+    // Written out rather than as `kind !== "Together"`, so that an 18th kind
+    // has to declare which side it is on. The default it used to fall into
+    // was "physical", which is the side that sends the player to search a
+    // room — the failure this function exists to avoid.
+    case "At":
+    case "NotAt":
+    case "Stayed":
+    case "Saw":
+    case "AloneIn":
+    case "Occupied":
+    case "Empty":
+    case "Count":
+    case "Visited":
+    case "NeverVisited":
+    case "AliveAt":
+    case "DeathWindow":
+    case "DoorClosed":
+    case "BarredDoor":
+    case "BarredRoom":
+    case "Capacity":
+      return true;
+
+    default: {
+      const unreachable: never = kind;
+      throw new Error(`physical: unknown kind ${JSON.stringify(unreachable)}`);
+    }
+  }
 }
 
 /* ---------------------------------------------------------- what is true */
@@ -278,8 +308,30 @@ export function givesAwayAnswer(
       // Same argument from the other end: "still alive at T-3" plus a
       // briefing that caps `t*` at T-2 leaves one hour standing.
       return body.t + 1 === range[1];
-    default:
+
+    // The rest name nobody and pin no hour on their own. Spelled out rather
+    // than left to a `default` so that an 18th kind has to be judged here:
+    // the cost of getting this wrong is a case that hands over its answer,
+    // and defaulting to "safe" is exactly the wrong direction to fail in.
+    // `Occupied`/`Count` in `r*` after `t*` do say somebody was there, but
+    // they name no one, and the player already knows the body is in `r*`.
+    case "NotAt":
+    case "Occupied":
+    case "Empty":
+    case "Count":
+    case "NeverVisited":
+    case "DoorClosed":
+    case "BarredDoor":
+    case "BarredRoom":
+    case "Capacity":
       return false;
+
+    default: {
+      const unreachable: never = body;
+      throw new Error(
+        `givesAwayAnswer: unknown kind ${JSON.stringify(unreachable)}`,
+      );
+    }
   }
 }
 
@@ -368,10 +420,25 @@ export function couldKnow(
       return true;
     case "AliveAt":
       return saw(V, body.t) && isLiving(frame, world, V, body.t);
-    default:
-      // `Empty` and `DeathWindow` are nobody's to witness, and the case-file
-      // rules are the house's rather than anybody's.
+
+    // `Empty` and `DeathWindow` are nobody's to witness — you cannot report
+    // an empty room you were standing in, and the hour of death is the
+    // coroner's — and the case-file rules are the house's rather than
+    // anybody's. Spelled out rather than left to a `default`, so an 18th kind
+    // has to say who may speak it instead of becoming physical-only evidence
+    // by omission.
+    case "Empty":
+    case "DeathWindow":
+    case "DoorClosed":
+    case "BarredDoor":
+    case "BarredRoom":
+    case "Capacity":
       return false;
+
+    default: {
+      const unreachable: never = body;
+      throw new Error(`couldKnow: unknown kind ${JSON.stringify(unreachable)}`);
+    }
   }
 }
 

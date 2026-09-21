@@ -317,5 +317,14 @@ function applyClue(d: Deduction, clue: Clue): void {
     case "BarredDoor":
     case "BarredRoom":
       return;
+
+    default: {
+      // As in tier 0: `applyClue` returns `void`, so this `never` is the only
+      // thing that makes an 18th kind a build failure rather than a clue the
+      // deduction solver quietly never reads. See CLAUDE.md, "the six switch
+      // sites".
+      const unreachable: never = b;
+      throw new Error(`no tier 2 rule for ${JSON.stringify(unreachable)}`);
+    }
   }
 }

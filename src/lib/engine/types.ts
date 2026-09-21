@@ -254,8 +254,17 @@ export interface Glossary {
 
 /**
  * One clue type's module. Wave 1 fills in the first four; the remaining slots
- * are declared now so that later waves extend a module rather than scatter
- * `switch` statements across the engine.
+ * were declared then so that later waves would extend a module rather than
+ * scatter `switch` statements across the engine.
+ *
+ * **That worked for everything the player reads and the model touches, and
+ * not for the solver.** `template` and `fields` are filled by all seventeen
+ * modules and really are the only places those jobs are done. `propagate`
+ * below never was, and the solver and generator switch on kind in seven
+ * places instead — see CLAUDE.md, "the seven switch sites". They are all
+ * exhaustive now, so the cost of the scatter is seven edits rather than a
+ * silent omission, but do not read this interface as a promise that a new
+ * clue kind is confined to one file.
  */
 export interface ClueModule<K extends ClueKind = ClueKind> {
   kind: K;
@@ -284,7 +293,21 @@ export interface ClueModule<K extends ClueKind = ClueKind> {
     glossary: Glossary,
     speaker?: PersonId,
   ): string;
-  /** Wave 2: forced-elimination propagators for the deduction solver. */
+  /**
+   * Wave 2: forced-elimination propagators for the deduction solver.
+   *
+   * **Never implemented, by any module, in any wave.** It stayed `unknown`
+   * because a propagator is not a property of a clue kind alone: it belongs
+   * to a kind *at a tier*, and that is what grades the case. `Together` is
+   * the plainest example — tier 0 takes only "both of them were alive" from
+   * it and tier 2 takes the room equality, deliberately, because the
+   * two-person argument is what makes a case Normal rather than Easy. One
+   * `propagate` per module would have to hand back a tier with every
+   * conclusion, which is what the rules files do by being separate. Left
+   * declared rather than deleted because a better signature may exist;
+   * documented as empty so that nobody plans around it as though it were
+   * filled.
+   */
   propagate?: unknown;
   /**
    * Wave 5: which domain each payload field draws from.

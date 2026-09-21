@@ -108,13 +108,27 @@ rather than a sweep of `switch` statements". Half of that came true and half did
 and wave 8 audited which half. Everything the *player reads* and everything the *model
 touches* really does dispatch through the registry — the sentences, the JSON schema, the
 parse-back, the UI, the pack codec. But the **solver and the generator switch on kind in
-six places**, `propagate` was declared as `unknown` in wave 2 and has never been filled,
-and only `exhaustive.ts` ends in a `never` assertion that fails the build. `tier0.ts` and
-`tier2.ts` enumerate all seventeen with no `default`, and their `applyClue` returns
-`void` — so TypeScript cannot check them, and an eighteenth kind would be handled by the
-oracle and **silently ignored by the deduction solver**. That is invariant 2's divergence
+seven places**, and `propagate` was declared as `unknown` in wave 2 and has never been
+filled by any module.
+
+**What the audit found, and what was done about it.** Only `exhaustive.ts` ended in a
+`never` assertion. The other six compiled happily without a new kind: `tier0.ts` and
+`tier2.ts` enumerated all seventeen with no `default` and an `applyClue` returning
+`void`, which TypeScript cannot check — so an eighteenth kind would have been handled
+by the oracle and **silently ignored by the deduction solver**, invariant 2's divergence
 arriving as neither a type error nor a certificate failure, only as a rise in
-`unsolvable` rejections. CLAUDE.md's "How to add a clue type" has the table.
+`unsolvable` rejections that reads like a weak clue type. `bank.ts#places`,
+`enumerate.ts#givesAwayAnswer`, `enumerate.ts#couldKnow` and `enumerate.ts#physical`
+each fell through to a `default` whose answer was a decision in disguise — `physical`
+was written `kind !== "Together"`, so a new kind defaulted to *physical evidence*, the
+side that sends the player to search a room for it.
+
+All seven now end in a `const unreachable: never` binding. The switches are still
+scattered, which is the real finding and is not fixed; what changed is that an
+eighteenth kind is now a compiler error in every one of them rather than in one. Proved
+by adding a `Moved` member to `ClueBody` and nothing else: **11 errors across 9 files**,
+seven of them these. CLAUDE.md's "How to add a clue type" has the table and the recipe
+for re-running that check.
 
 `canonical(body)` is a *syntactic* normal form, not a semantic one. `Saw(p,q,t,r)` and
 `Saw(q,p,t,r)` canonicalise the same, because as a formula the clue is symmetric and the

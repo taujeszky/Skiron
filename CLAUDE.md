@@ -284,38 +284,61 @@ you what is left.
    being written). Then `npm run sim` to see what the new kind does to the tables,
    and record it in ARCHITECTURE section 9 if you keep it.
 
-### The six switch sites the registry does not cover
+### The seven switch sites the registry does not cover
 
 **This section exists because the sentence it replaces was wrong.** `clues/index.ts`,
-`types.ts:255` and ARCHITECTURE §3 all say, in wave-1 language, that everything
+`types.ts:255` and ARCHITECTURE §3 all said, in wave-1 language, that everything
 dispatches through the registry and a new kind is "a new file plus one line in
-`MODULES`". That was the intention; the switches got scattered anyway. Verified by
-audit in wave 8:
+`MODULES`". That was the intention; the switches got scattered anyway. Found by audit
+in wave 8 — **and every one of them was made to fail the build afterwards**, so the
+list below is now a map of where to work rather than a list of traps:
 
 | Site | Cases | If an 18th kind is added |
 | --- | --- | --- |
-| `solver/exhaustive.ts` `clueProp()` | all 17 + `never` | **build fails** — the only one that does |
-| `solver/rules/tier0.ts` `applyClue()` | all 17, no default | **silently ignored** |
-| `solver/rules/tier2.ts` `applyClue()` | all 17, no default | **silently ignored** |
-| `generator/bank.ts` `places()` | 3 + default | silently ignored |
-| `generator/enumerate.ts` `givesAwayAnswer()` | 8 + default | silently ignored |
-| `generator/enumerate.ts` (who may speak it) | 11 + default | silently ignored |
+| `solver/exhaustive.ts` `clueProp()` | 17 + `never` | build fails |
+| `solver/rules/tier0.ts` `applyClue()` | 17 + `never` | build fails |
+| `solver/rules/tier2.ts` `applyClue()` | 17 + `never` | build fails |
+| `generator/bank.ts` `places()` | 17 + `never` | build fails |
+| `generator/enumerate.ts` `givesAwayAnswer()` | 17 + `never` | build fails |
+| `generator/enumerate.ts` `couldKnow()` (who may speak it) | 17 + `never` | build fails |
+| `generator/enumerate.ts` `physical()` | 17 + `never` | build fails |
 
-The dangerous pair is `tier0` and `tier2`: `applyClue` returns `void`, so TypeScript
-does **not** check exhaustiveness, and a new kind would be handled by the exhaustive
+Five of those seven used to be a bare `default`, and the dangerous pair was `tier0`
+and `tier2`: `applyClue` returns `void`, so TypeScript does **not** check
+exhaustiveness on its own, and a new kind would have been handled by the exhaustive
 oracle and ignored by the deduction solver. That is the two-solver divergence
-invariant 2 exists to prevent, and it surfaces as neither a type error nor a
-certificate failure — the deduction solver merely proves less, so it shows up as a
+invariant 2 exists to prevent, and it would have surfaced as neither a type error nor
+a certificate failure — the deduction solver merely proves less, so it shows up as a
 rise in `unsolvable` rejections in `npm run sim`, which is easy to read as "the new
-clue type is not very useful".
+clue type is not very useful". A `default` that returns a value is checkable and a
+`default` that returns `void` is not, which is why the fix is a `never` binding in
+every one of them and not a convention.
 
-Also check `enumerate.ts#physical()` (currently `kind !== "Together"`), and
-`exhaustive.ts` tests `DoorClosed` / `BarredDoor` / `Capacity` by name outside its
-main switch when folding rule cards into movement masks.
+The other two, where the default was "no" rather than "nothing": `places()` decides
+whether a card accounts for somebody's whereabouts at `t*` (a new kind defaulting to
+"no" quietly widens `silenceLeaks`/`placementLeaks`), and `physical()` used to be
+`kind !== "Together"`, so a new kind defaulted to **physical** — the side that sends
+the player to search a room for it.
 
-**Finding these by grep:** `grep 'body.kind'` misses four of the six, which are
-written `switch (b.kind)` after `const b = clue.body`. Search for a quoted kind name
-such as `case "At"` instead. And plain `grep kind` is very noisy — `source.kind`,
+**Measured, not assumed:** adding `| { kind: "Moved"; p: PersonId; t: SlotIndex }` to
+`ClueBody` and changing nothing else gives **11 errors in 9 files** — the seven above
+plus `clues/index.ts` (`MODULES` is a mapped type over `ClueKind`), `clues/schema.ts`,
+and two tests that tabulate every kind. That edit, `npm run check`, and `git checkout`
+of the one file is the way to re-check this table rather than trusting it.
+
+`CLUE_KINDS` is the exception and stays one: it is a plain `readonly ClueKind[]`, so
+seventeen entries still typecheck when there are eighteen kinds. What catches it is
+`clues.test.ts`, which compares it against `Object.keys` of a per-kind sample table
+and asserts the length is 17 — that hardcoded 17 is deliberate, and updating it is
+part of the job.
+
+Also note `exhaustive.ts` tests `DoorClosed` / `BarredDoor` / `Capacity` by name
+outside its main switch when folding rule cards into movement masks.
+
+**Finding these by grep:** `grep 'body.kind'` finds three of the seven. Three more are
+written `switch (b.kind)` after `const b = clue.body`, and `physical()` switches on a
+bare `ClueKind` parameter and mentions neither word. Search for a quoted kind name
+such as `case "At"` instead — that finds all seven. And plain `grep kind` is very noisy — `source.kind`,
 `LlmError.kind`, `panel.kind`, `hint.kind` and `Conclusion.kind` all share the field
 name and none of them are clue kinds.
 
@@ -336,8 +359,9 @@ delegates to the module's `template`.
 
 ## State of the project (2026-09-21)
 
-**Waves 0-7 done; wave 8 done except its owner gates.** 956 tests green in ~13s,
-`npm run check` at 0/0 over 525 files, `npm run contrast` at 0 of 78 pairs. The game is
+**Waves 0-7 done; wave 8 done except its owner gates; wave 9 not started.** 963 tests
+green in ~13s,
+`npm run check` at 0/0 over 526 files, `npm run contrast` at 0 of 78 pairs. The game is
 playable end to end, offline, with no key: twelve illustrated cases and two tutorial
 lessons ship with the site, and every case a model writes has every sentence checked
 against the evidence before the player sees it. Measured fallback rate: **0% over 23
@@ -469,7 +493,37 @@ bearable - needs a person or a paid live run, and the paid run is a gate nobody 
 asked for. Item 4 of that list *was* measured: the Expert notebook wants 759 px and gets
 719 on a 1440 laptop, 639 at 1280 and 390 on a phone, so it scrolls at every width.
 
-Next: wave 9 is optional and not planned in detail.
+**The hardening pass, 2026-09-21 — not wave 9.** Wave 9 is optional, is not planned in
+detail, and its own file says not to start it unbidden; none of it has been. What was
+done after wave 8 is the set of defects wave 8's own audit recorded and left open, all
+on shipped code, with no new feature and no model call:
+
+- **The seven kind-switches outside the registry all end in `never`**, so an 18th clue
+  kind is a build error in every one rather than a silent omission in five. The one that
+  mattered is the pair `tier0.ts`/`tier2.ts` — see "How to add a clue type" above.
+- **`Save.pack` is fatal when present and malformed**, like every sibling field in
+  `parseSave`. Degrading it to `undefined` did not mean "unreadable", it meant "a
+  generated case", which is a false statement about the save in hand, and `resume()`
+  believed it.
+- **`src/lib/platform.test.ts`**, a second purity guard over everything outside the
+  engine. Outside `engine/` the rule cannot be absence, so it is **ownership**: each
+  browser API names the file allowed to touch it, an owner that stops using its API must
+  leave the list, and the two known leaks (`controller.ts#applyTheme` reaching for
+  `matchMedia` and `document`) are asserted by name so a third cannot appear quietly.
+  `engine/purity.test.ts`'s own banned list, written in wave 1, gained the APIs waves
+  5-7 introduced.
+- **Stale doc comments repaired** in `clues/index.ts`, `types.ts` and ARCHITECTURE §3 —
+  and `ClueModule.propagate` now says outright that no module has ever filled it, and
+  why one propagator per kind is the wrong shape: a propagator belongs to a kind *at a
+  tier*, and `Together` is split across tiers 0 and 2 deliberately.
+
+Every one of those guards was proved to bite before it was believed: an 18th kind
+planted in `ClueBody` (11 errors, 9 files), the old lenient `Save.pack` branch put back,
+and a `localStorage` call planted in `game/rating.ts`. Restores were done by copying a
+file back, never `git checkout --`. `docs/plan/wave-9-beyond.md` has the whole account
+at its foot.
+
+Next: wave 9 is optional, not planned in detail, and not to be started unasked.
 
 ## How it plays (wave 4's verdict, in template text)
 

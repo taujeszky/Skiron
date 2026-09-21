@@ -28,6 +28,19 @@ const BANNED: { pattern: RegExp; why: string }[] = [
   { pattern: /\bdocument\./, why: "the engine must run in a worker and in Node" },
   { pattern: /\bwindow\./, why: "the engine must run in a worker and in Node" },
   { pattern: /\blocalStorage\b/, why: "the engine must run in a worker and in Node" },
+  // Added in wave 9. The list above was written in wave 1 and named the APIs
+  // wave 1 could think of; waves 5 to 7 brought IndexedDB, blob URLs, the
+  // cache storage and `fetch` into the app, and none of them were here. None
+  // has ever appeared in engine code — this is closing the door, not
+  // reporting a break-in.
+  { pattern: /\bsessionStorage\b/, why: "the engine must run in a worker and in Node" },
+  { pattern: /\bindexedDB\b/, why: "the engine must run in a worker and in Node" },
+  { pattern: /\bmatchMedia\b/, why: "the engine must run in a worker and in Node" },
+  { pattern: /\bnavigator\./, why: "the engine must run in a worker and in Node" },
+  { pattern: /\bcaches\./, why: "the engine must run in a worker and in Node" },
+  { pattern: /ObjectURL\b/, why: "the engine must run in a worker and in Node" },
+  { pattern: /\bfetch\(/, why: "the engine is given its inputs, it never goes and gets them" },
+  { pattern: /\bnew Worker\b/, why: "the engine is what runs inside the worker" },
 ];
 
 function sourceFiles(dir: string): string[] {

@@ -172,6 +172,25 @@ describe("what it refuses", () => {
     reject({ ...goodSave(), ms: Number.NaN });
   });
 
+  /**
+   * A pack name that is present and wrong is fatal, and this is the one
+   * refusal worth arguing for, because the tempting reading is the opposite.
+   * Dropping it to `undefined` does not mean "we did not understand this
+   * save" — it means "this is a generated case", which is a different and
+   * false statement about the save in hand. `resume()` believes it and
+   * rebuilds the case from the generator, which is precisely the wave-8 bug
+   * `Save.pack` was added to fix: the player gets a case that looks right and
+   * carries none of the prose or pictures they were reading.
+   */
+  it("rejects a pack name it cannot trust as a URL segment", () => {
+    reject({ ...goodSave(), pack: "" });
+    reject({ ...goodSave(), pack: "../../etc" });
+    reject({ ...goodSave(), pack: "Starter" });
+    reject({ ...goodSave(), pack: "-leading-dash" });
+    reject({ ...goodSave(), pack: "a".repeat(33) });
+    reject({ ...goodSave(), pack: 7 });
+  });
+
   it("takes a save with no `solved` flag as unsolved rather than refusing it", () => {
     const { solved, ...rest } = goodSave();
     expect(solved).toBe(false);
@@ -215,6 +234,17 @@ describe("what it repairs", () => {
     // The counterweight to everything above: a parser that says no to
     // everything would pass every test in the previous block.
     expect(parseSave(JSON.parse(JSON.stringify(goodSave())))).toEqual(goodSave());
+  });
+
+  it("carries a good pack name through, and leaves an absent one absent", () => {
+    // The counterweight to the refusal above: a parser that rejected every
+    // `pack` would pass that test too, and would break resuming the twelve
+    // cases that ship.
+    const packed = { ...goodSave(), pack: "starter" };
+    expect(parseSave(JSON.parse(JSON.stringify(packed)))?.pack).toBe("starter");
+    // A save written before wave 8 has no `pack` key at all, and that still
+    // means what it always meant.
+    expect(parseSave(JSON.parse(JSON.stringify(goodSave())))?.pack).toBeUndefined();
   });
 });
 

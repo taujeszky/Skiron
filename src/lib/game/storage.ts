@@ -334,11 +334,22 @@ export function parseSave(v: unknown): Save | null {
   // The pack name becomes a URL path segment in `packLoader.ts`, so it is
   // checked here rather than trusted: a save is a value a browser hands back,
   // and `/cases/../../something/manifest.json` is the shape of the mistake.
-  // Absent, empty or malformed all mean the same thing — a generated case.
-  const pack =
-    typeof v.pack === "string" && /^[a-z0-9][a-z0-9-]{0,31}$/.test(v.pack)
-      ? v.pack
-      : undefined;
+  //
+  // Absent means a generated case — every save written before wave 8 is that,
+  // and there is nothing wrong with it. Present and malformed is a different
+  // thing and is **fatal**, like every other field here. Degrading it to
+  // `undefined` would say "generated case" about a save that is nothing of
+  // the sort, and `resume()` would then regenerate a case from an id whose
+  // pack file is what actually holds the prose and the pictures — the wave-8
+  // resume bug, re-entered through the back door and silently, because the
+  // player would be handed a plausible-looking case that is not the one they
+  // left. Discarding the save loses their progress and says so.
+  let pack: string | undefined;
+  if (v.pack !== undefined && v.pack !== null) {
+    if (typeof v.pack !== "string") return null;
+    if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(v.pack)) return null;
+    pack = v.pack;
+  }
 
   const save: Save = {
     id: v.id,

@@ -363,7 +363,7 @@ docs/                ARCHITECTURE.md (write it as the engine lands), plan/
 | 6 | `wave-6-interrogation.md` | Free-text questioning | **done** 2026-09-20 — 182/182 questions routed as written, 162/162 replies survived the guard, p50 2.6s; three fixes came out of the first live run |
 | 7 | `wave-7-art.md` | Portraits, scene art, starter pack | **done** 2026-09-21 — twelve illustrated cases shipped, three at each difficulty, 84 pictures for ~$6 of the $20 allowed. 84/84 usable, 82 first time; 1.40 MB of art and **nothing added to the install payload**. The wave's lesson: a prohibition cannot beat a description |
 | 8 | `wave-8-ship.md` | Tutorial, polish, docs, repo, deploy, catalog | **tasks 1-7 done** 2026-09-21 — two tutorial lessons, the balance pass re-measured and deliberately unchanged, accessibility audited with `npm run contrast` as a permanent guard, case files that are re-proved on import, and three bugs that had been shipping: a pack case could not be resumed, the writing path printed the provider's raw error, and the floor plan's rooms were announced as nothing. Task 8 offered 2026-09-21 and **held by the owner**: nothing is published |
-| 9 | `wave-9-beyond.md` | Optional: daily case, confrontation, Hungarian, Tauri | not planned in detail |
+| 9 | `wave-9-beyond.md` | Optional: daily case, confrontation, Hungarian, Tauri | not planned in detail — **not started.** That file's foot records a hardening pass done 2026-09-21 instead: the defects wave 8's audit found and left open, on shipped code, no new feature and no model call |
 
 ## Risks
 

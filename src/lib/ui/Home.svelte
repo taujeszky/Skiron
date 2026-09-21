@@ -40,9 +40,14 @@
    * Empty until the manifest answers, and the whole section stays hidden if
    * it never does — an empty shelf with a heading over it is worse than no
    * shelf. These need no key and no network beyond the file itself.
+   *
+   * The manifest's `name` is deliberately not read. It was, into a variable
+   * nothing used, which is how nobody noticed that the starter pack's is the
+   * lowercase directory name: putting "starter" above the shelf would be
+   * worse than the editorial heading, and the field is there for whoever
+   * opens the file, not for this screen.
    */
   let shelf = $state<PackEntry[]>([]);
-  let shelfName = $state("");
 
   // Read once on mount rather than in a derived: the save changes only when
   // this screen is not on, so re-reading it on every keystroke would be work
@@ -56,7 +61,6 @@
     void loadManifest().then((manifest) => {
       if (manifest) {
         shelf = manifest.cases;
-        shelfName = manifest.name;
       }
     });
   });

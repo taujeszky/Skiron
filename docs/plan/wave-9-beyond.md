@@ -46,9 +46,10 @@ They were offered on 2026-09-21 and the owner chose to **hold all three**.
 Nothing is published. That is a decision, not an omission; do not re-ask
 without being asked to.
 
-956 tests in ~13 s, `npm run check` 0/0 over 525 files, `npm run contrast` 0 of
+963 tests in ~13 s, `npm run check` 0/0 over 526 files, `npm run contrast` 0 of
 78 pairs, `npm run offline` PASS. Twelve illustrated cases and two tutorial
-lessons ship.
+lessons ship. (956 and 525 when this section was written; the difference is
+the hardening pass at the foot of this file, which started no wave-9 item.)
 
 ### Read this first: "one file plus one registry line" is not true
 
@@ -60,22 +61,30 @@ corrected, but the belief is load-bearing enough to repeat here.
 Everything the *player reads* and everything the *model touches* really does
 dispatch through the registry — sentences, JSON schema, parse-back, UI, pack
 codec. `src/lib/ui/`, `src/lib/game/` and `src/lib/llm/` contain no clue-kind
-switch at all. But the **solver and generator switch on kind in six places**,
-and `ClueModule.propagate` — the slot declared in wave 2 to prevent exactly
-this — is still `propagate?: unknown` and has never been filled by any module.
+switch at all. But the **solver and generator switch on kind in seven places**
+(the audit said six and missed `enumerate.ts#physical()`, which it listed
+separately), and `ClueModule.propagate` — the slot declared in wave 2 to
+prevent exactly this — is still `propagate?: unknown` and has never been
+filled by any module.
 
-Only **one** of the six fails the build for an 18th kind:
-`solver/exhaustive.ts`, which ends in `const unreachable: never = b`. The
-dangerous pair is `solver/rules/tier0.ts` and `solver/rules/tier2.ts`: their
-`applyClue` returns `void` and enumerates all seventeen with no `default`, so
-TypeScript cannot check exhaustiveness. A new kind would be handled by the
-oracle and **silently ignored by the deduction solver** — invariant 2's
-two-solver divergence, arriving as neither a type error nor a certificate
-failure. It surfaces only as a rise in `unsolvable` rejections in `npm run
-sim`, which reads like "the new clue type is not very useful".
+**Closed on 2026-09-21, after this section was first written.** When the audit
+ran, only `solver/exhaustive.ts` failed the build for an 18th kind. The
+dangerous pair was `solver/rules/tier0.ts` and `solver/rules/tier2.ts`: their
+`applyClue` returns `void` and enumerated all seventeen with no `default`, so
+TypeScript could not check exhaustiveness, and a new kind would have been
+handled by the oracle and **silently ignored by the deduction solver** —
+invariant 2's two-solver divergence, arriving as neither a type error nor a
+certificate failure, surfacing only as a rise in `unsolvable` rejections in
+`npm run sim`, which reads like "the new clue type is not very useful".
 
-CLAUDE.md's "How to add a clue type" has the table and the grep advice (four of
-the six are written `switch (b.kind)`, so grepping `body.kind` misses them).
+All seven now end in a `const unreachable: never` binding, with no change to
+what any of them does today. The scatter itself is *not* fixed and is the real
+finding; what is fixed is that it is no longer silent. Adding a `Moved` member
+to `ClueBody` and nothing else now gives 11 errors in 9 files. That edit is
+also how to re-check this paragraph rather than believe it.
+
+CLAUDE.md's "How to add a clue type" has the table and the grep advice
+(`grep 'body.kind'` finds three of the seven).
 
 ### Item by item
 
@@ -186,14 +195,27 @@ cards into movement masks.
 - `ui/download.ts` and `ui/motion.ts` differ in kind from the other two: they
   have no injection point, so a port rewrites them rather than configuring
   them.
-- **Why the leaks exist, and the fix worth making first:** `engine/purity.test.ts`
-  enforces the discipline **only inside `src/lib/engine/`** — its root is the
-  engine directory. Nothing in the suite would catch a new direct
-  `localStorage`, `matchMedia` or `createObjectURL` call added anywhere in
-  `game/`, `llm/`, `ui/` or `worker/`. Its pattern list also predates waves 5–7
-  and does not mention `indexedDB`, `matchMedia`, `navigator`, `caches` or
-  `createObjectURL`. Widening the root without widening the patterns would give
-  false confidence.
+- **Why the leaks existed, and the fix that was worth making first — made on
+  2026-09-21.** `engine/purity.test.ts` enforced the discipline **only inside
+  `src/lib/engine/`**, and its pattern list predated waves 5–7, so nothing in
+  the suite would have caught a new direct `localStorage`, `matchMedia` or
+  `createObjectURL` call anywhere in `game/`, `llm/`, `ui/` or `worker/`.
+  Both halves are now closed: the engine's list gained `indexedDB`,
+  `matchMedia`, `navigator`, `caches`, `ObjectURL`, `sessionStorage`, `fetch(`
+  and `new Worker` (none of which has ever appeared in engine code), and
+  `src/lib/platform.test.ts` is a second, different guard over everything
+  outside the engine.
+- **What `platform.test.ts` asserts, and why it is ownership rather than
+  absence.** Outside the engine the app is *supposed* to use the browser, so
+  each API names the file or files allowed to touch it and every other file
+  fails. It also holds the list to account in two directions: an owner that
+  stops using its API must be removed from the list (or the entry becomes a
+  standing licence nobody re-reads), and the two leaks above are marked
+  `leaking` and asserted **by name**, so a third cannot be added quietly and
+  a fixed one cannot leave its note behind. Fixing the two is still the Tauri
+  port's job and still nobody's until the owner asks.
+- Only `.ts` is scanned. `.svelte` is the DOM layer and is meant to touch the
+  DOM, and `src/service-worker.ts` is outside `src/lib/`.
 
 **More providers.** The cleanest of the items. All three model paths now have
 an injection seam — `useWriteProvider`, `useAskProvider`, `useArtProvider`, all
@@ -232,10 +254,15 @@ Still open, and worth knowing before anything outward-facing:
   `$app/paths`; `packLoader.ts` and `controller.ts` build root-absolute
   `/cases/...` URLs. `util/precache.ts` is the only base-path-aware code in the
   repo. Fine for a Cloudflare Pages root deploy, broken anywhere else.
-- **`Save.pack`'s validation is non-fatal, unlike every other field in
-  `parseSave`.** A malformed pack name degrades to `undefined` — meaning "a
-  generated case" — rather than discarding the save, so a corrupt value
-  silently changes *which case you resume* instead of failing loudly.
+- ~~**`Save.pack`'s validation is non-fatal, unlike every other field in
+  `parseSave`.**~~ **Fixed 2026-09-21.** A malformed pack name degraded to
+  `undefined` — which does not mean "we did not understand this" but "this is
+  a generated case", a different and false statement about the save in hand.
+  `resume()` believed it and rebuilt from the generator: the wave-8 resume bug
+  re-entered through the back door, and silently, because the player is handed
+  a plausible case rather than an error. Present-and-malformed is now fatal
+  like every sibling field; absent still means a generated case, which is what
+  every save written before wave 8 is.
 - **A tutorial case number is a label, not a seed.** `SK1-E-tut1` typed into "A
   case by number" generates a four-suspect Easy case that is not lesson one,
   because the lessons were built with a shape override. Do not let a test
@@ -244,12 +271,51 @@ Still open, and worth knowing before anything outward-facing:
   `shipped.test.ts` (it enumerates directories) and in the service worker's
   precache (`precacheList` filters by extension, not by pack). Good for
   correctness; a half-built scratch pack left there will fail `npm test`.
-- `Home.svelte` reads `manifest.name` into `shelfName` and then never uses it —
-  the heading is the literal "Cases we wrote". That is why nobody noticed the
-  starter manifest's `name` is the lowercase directory name.
+- ~~`Home.svelte` reads `manifest.name` into `shelfName` and then never uses
+  it~~ — **removed 2026-09-21**, with the reason written where the variable
+  was: the heading stays the editorial "Cases we wrote", because the starter
+  manifest's `name` is the lowercase directory name and "starter" over the
+  shelf would be worse. The dead read is why nobody noticed that.
 - **Only two of four interrogation classifications reach the voice call.**
   `too_broad` and `accusation` are answered from a canned line after call 1.
   `smalltalk` does reach call 2, with an empty `sentences` list, which
   `guards.ts` treats as the strictest case. Anything reporting a rate over
   "questions" has a denominator that mixes these — the wave-6 lesson about
   what a denominator contains, still live.
+
+---
+
+## The hardening pass (2026-09-21), which is not wave 9
+
+The owner asked for the implementation to continue. Wave 8 is complete but for
+its three owner gates, which are held; the list at the top of this file is
+optional and says not to start any of it unbidden, and none of it was started.
+What was done instead is the set of defects the wave-8 audit recorded above and
+left open — work on shipped code, with no new feature and no model call.
+
+- **The seven switch sites all end in `never`.** See "Read this first".
+  Behaviour is unchanged: each of the five that gained a `default` had already
+  enumerated every kind, so the new arm is unreachable today and is a build
+  failure tomorrow. The two that had a `default` returning a value keep the
+  same answers, now written out.
+- **`Save.pack` is fatal when present and malformed.**
+- **A second purity guard, `src/lib/platform.test.ts`**, over everything
+  outside the engine. See "Tauri shell".
+- **Three stale doc comments repaired** where the code and the comment
+  disagreed: `clues/index.ts`, `types.ts`'s `ClueModule` header, and
+  `ClueModule.propagate`, which now says outright that it has never been
+  filled and why one `propagate` per kind is the wrong shape — a propagator
+  belongs to a kind *at a tier*, and `Together` is split across tiers 0 and 2
+  on purpose, because the two-person argument is what makes a case Normal.
+- **`Home.svelte`'s dead `shelfName` removed.**
+
+**Every guard added here was proved to bite before it was believed**, which is
+this repository's oldest lesson and the reason the suite is worth anything: an
+18th clue kind planted in `ClueBody` (11 errors, 9 files, the seven sites among
+them); the old lenient `Save.pack` branch put back (the new test fails, naming
+the value it should have refused); a `localStorage` call planted in
+`game/rating.ts` (`platform.test.ts` fails and names the file, the line and the
+owner). Each was then restored by copying a file back, never by `git checkout
+--`, which is the restore that has twice destroyed other uncommitted work here.
+
+963 tests, `npm run check` 0/0 over 526 files.
