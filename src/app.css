@@ -9,13 +9,16 @@
   --panel: #fdfbf6;
   --panel-2: #f5f1e8;
   --panel-border: #d9d2c2;
+  /* A control's edge, which has to clear 3:1 where a panel's does not.
+     See the note on `--control-border` in the dark block below. */
+  --control-border: #878781;
   --text: #2a2721;
-  --text-dim: #857f72;
+  --text-dim: #6e695e;
   --accent: #8c2f2f;
   --accent-text: #fdfbf6;
   --danger: #c23b3b;
   --ok: #2f7d4f;
-  --warn: #b5791a;
+  --warn: #9c6916;
   --shadow: 0 8px 30px rgba(40, 32, 20, 0.16);
   --focus: #8c2f2f;
 
@@ -25,7 +28,7 @@
   --room-fill-alt: #f3efe3;
   --room-stroke: #b9b1a0;
   --wall: #6f685b;
-  --door: #a8925f;
+  --door: #9f8956;
   --door-closed: #c23b3b;
   --room-label: #6f685b;
   --room-hot: rgba(140, 47, 47, 0.14);
@@ -37,7 +40,7 @@
   --grid-header: #ebe5d8;
   --cell-bg: #fffdf7;
   --cell-set: rgba(47, 125, 79, 0.15);
-  --cell-out: #b5aa96;
+  --cell-out: #7c7465;
   --pencil: #5c5749;
   --cell-error: rgba(194, 59, 59, 0.18);
   --cell-hint: rgba(181, 121, 26, 0.22);
@@ -48,7 +51,7 @@
   --card-fact: #2f6c7d;
   --card-testimony: #7a4f8c;
   --card-rule: #8a6b23;
-  --canon: #857f72;
+  --canon: #7a7569;
 
   /* people — index 0..7 */
   --p0: #2f6c7d;
@@ -68,15 +71,26 @@
   --panel: #1e1e25;
   --panel-2: #24242c;
   --panel-border: #343441;
+  /*
+   * Separate from `--panel-border` since wave 8, and the reason is a
+   * measurement: a text input is `background: var(--bg)` on a `var(--bg)`
+   * page, so its border is the ONLY thing that says it is a text input.
+   * WCAG 1.4.11 wants 3:1 for that, and `--panel-border` was at 1.46 in
+   * the light theme and 1.35 here. Raising `--panel-border` itself would
+   * have drawn a heavy line around every panel in the game, so the two
+   * uses were pulled apart instead: panels keep the quiet edge, controls
+   * get one that can be seen. `tools/contrast.mjs` is what found it.
+   */
+  --control-border: #69696f;
   --text: #e6e2d8;
   --text-dim: #8d8a83;
-  --accent: #d05e5e;
+  --accent: #d26464;
   --accent-text: #15151a;
   --danger: #ef6b6b;
   --ok: #4fc183;
   --warn: #e0a83c;
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-  --focus: #d05e5e;
+  --focus: #d26464;
 
   --plan-bg: #191920;
   --room-fill: #24242c;
@@ -94,7 +108,7 @@
   --grid-header: #25252e;
   --cell-bg: #1e1e25;
   --cell-set: rgba(79, 193, 131, 0.18);
-  --cell-out: #55525c;
+  --cell-out: #8a8794;
   --pencil: #b3afa5;
   --cell-error: rgba(239, 107, 107, 0.2);
   --cell-hint: rgba(224, 168, 60, 0.24);
@@ -150,7 +164,7 @@ button {
   gap: 6px;
   padding: 7px 14px;
   border-radius: 8px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--control-border);
   background: var(--panel);
   transition:
     background 0.15s,
@@ -184,7 +198,7 @@ textarea {
   font: inherit;
   color: var(--text);
   background: var(--bg);
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--control-border);
   border-radius: 8px;
   padding: 7px 10px;
 }

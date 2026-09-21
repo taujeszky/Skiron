@@ -18,6 +18,7 @@
     "playthrough": "node tools/playthrough.mjs",
     "offline": "node tools/offline.mjs",
     "inspect": "vite-node --config vitest.config.ts tools/inspect.mjs",
+    "contrast": "node tools/contrast.mjs",
     "author": "vite-node --config vitest.config.ts tools/author-case.mjs",
     "tutorial": "vite-node --config vitest.config.ts tools/build-tutorial.mjs",
     "ask": "vite-node --config vitest.config.ts tools/interrogate-cost.mjs",

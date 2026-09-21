@@ -54,18 +54,28 @@
     </header>
 
     {#if missed}
-      <p class="missed">
+      <p class="missed" role="status">
         {glossary.personName(missed.culprit)} did not kill
         {glossary.personName(frame.victim)} in {glossary.slotLabel(missed.slot)}.
         It is on the record. Keep going.
       </p>
     {/if}
 
-    <h2>Who</h2>
-    <div class="options">
+    <h2 id="accuse-who">Who</h2>
+    <!-- Buttons rather than radios, so `aria-pressed` is what says which one
+         is chosen. Without it the selection is visible and nothing else:
+         `class:on` is a colour, and a screen reader reads a list of names
+         with no indication that one of them is the answer being given. -->
+    <div class="options" role="group" aria-labelledby="accuse-who">
       {#each suspectIds(frame) as s (s)}
         {@const out = isCleared(notebook, s)}
-        <button class="option" class:on={who === s} class:out onclick={() => (who = s)}>
+        <button
+          class="option"
+          class:on={who === s}
+          class:out
+          aria-pressed={who === s}
+          onclick={() => (who = s)}
+        >
           <Token {frame} person={s} size={20} />
           <span>{glossary.personName(s)}</span>
           {#if out}<span class="note">your notes clear them</span>{/if}
@@ -73,11 +83,17 @@
       {/each}
     </div>
 
-    <h2>When</h2>
-    <div class="options">
+    <h2 id="accuse-when">When</h2>
+    <div class="options" role="group" aria-labelledby="accuse-when">
       {#each slotIndexes(frame) as t (t)}
         {@const out = isSlotRuledOut(notebook, t)}
-        <button class="option" class:on={when === t} class:out onclick={() => (when = t)}>
+        <button
+          class="option"
+          class:on={when === t}
+          class:out
+          aria-pressed={when === t}
+          onclick={() => (when = t)}
+        >
           <span>{glossary.slotLabel(t)}</span>
           {#if out}<span class="note">ruled out</span>{/if}
         </button>
@@ -85,7 +101,7 @@
     </div>
 
     {#if confirming && ready}
-      <p class="confirm">
+      <p class="confirm" role="status">
         You are naming {glossary.personName(who!)}, in
         {glossary.roomName(frame.murderRoom)}, in {glossary.slotLabel(when!)}.
         A wrong accusation goes on the record and the case stays open.

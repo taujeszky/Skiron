@@ -55,6 +55,8 @@ npm run build                  # static PWA into build/
 npm run preview                # serve build/ locally
 npm run playthrough            # play a case in headless Chrome through the real buttons
                                # (needs `npm run dev` up; --preset, --shots, --url)
+npm run contrast               # WCAG contrast for both themes. Non-zero if anything fails.
+npm run tutorial               # rebuild the two tutorial cases. No key, no network.
 npm run offline                # cut the network and generate a case from the cache
                                # (needs `npm run build && npm run preview` up)
 npm run author -- --estimate   # what a paid batch would cost. Makes NO calls.

@@ -32,6 +32,7 @@
     summingUpCards,
   } from "$lib/game/controller";
   import { formatDuration } from "$lib/game/rating";
+  import { prefersReducedMotion } from "./motion";
   import { LESSONS, TUTORIAL_PACK } from "$lib/game/tutorial";
   import CardView from "./CardView.svelte";
   import Plan from "./Plan.svelte";
@@ -65,7 +66,15 @@
   }
 
   let slot = $state(0);
-  let playing = $state(true);
+  /**
+   * The replay starts itself, unless the platform has asked it not to.
+   *
+   * Wave 8, task 3, and the item the plan named by name. The two CSS
+   * animations were already guarded; this one is a `setInterval` and CSS
+   * cannot see it. The Play button is still there, so nothing is taken away —
+   * the person decides when the evening starts moving.
+   */
+  let playing = $state(!prefersReducedMotion());
 
   /**
    * One slot a second and a half.

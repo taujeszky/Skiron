@@ -107,11 +107,22 @@
   }
 </script>
 
+<!--
+  The role depends on whether the plan can be used.
+
+  `role="img"` makes an element a leaf in the accessibility tree: its children
+  are not exposed at all. That is right for the briefing and the summary,
+  where the plan is a picture — and wrong on the investigate screen, where
+  every room carries a `role="button"` that a screen reader would then never
+  reach. The rooms were keyboard-focusable the whole time and announced as
+  nothing. So: a picture when there is nothing to click, a group of buttons
+  when there is.
+-->
 <svg
   class="plan"
   viewBox="{-PAD} {-PAD} {plan.width + PAD * 2} {plan.height + PAD * 2}"
-  role="img"
-  aria-label="The floor plan"
+  role={onroom ? "group" : "img"}
+  aria-label={onroom ? "The floor plan — choose a room to search" : "The floor plan"}
 >
   {#each plan.rooms as room (room.id)}
     {@const isBody = room.id === frame.murderRoom}

@@ -122,12 +122,27 @@
 
   <Coach />
 
-  <nav class="tabs">
-    <button class:on={$pane === "map"} onclick={() => pane.set("map")}>Map</button>
-    <button class:on={$pane === "notebook"} onclick={() => pane.set("notebook")}>
+  <!-- `aria-pressed` rather than a tablist: all three panes stay mounted at
+       every width and the buttons only hide them, so calling them tabs would
+       promise a relationship the DOM does not have. -->
+  <nav class="tabs" aria-label="Which pane to show">
+    <button
+      class:on={$pane === "map"}
+      aria-pressed={$pane === "map"}
+      onclick={() => pane.set("map")}>Map</button
+    >
+    <button
+      class:on={$pane === "notebook"}
+      aria-pressed={$pane === "notebook"}
+      onclick={() => pane.set("notebook")}
+    >
       Notebook
     </button>
-    <button class:on={$pane === "evidence"} onclick={() => pane.set("evidence")}>
+    <button
+      class:on={$pane === "evidence"}
+      aria-pressed={$pane === "evidence"}
+      onclick={() => pane.set("evidence")}
+    >
       Evidence
     </button>
   </nav>
@@ -166,10 +181,18 @@
     <section class="pane notebook" aria-label="The notebook">
       <div class="tools">
         <div class="modes" role="group" aria-label="What a tap does">
-          <button class:on={$markMode === "cross"} onclick={() => markMode.set("cross")}>
+          <button
+            class:on={$markMode === "cross"}
+            aria-pressed={$markMode === "cross"}
+            onclick={() => markMode.set("cross")}
+          >
             Cross out
           </button>
-          <button class:on={$markMode === "place"} onclick={() => markMode.set("place")}>
+          <button
+            class:on={$markMode === "place"}
+            aria-pressed={$markMode === "place"}
+            onclick={() => markMode.set("place")}
+          >
             Place
           </button>
         </div>

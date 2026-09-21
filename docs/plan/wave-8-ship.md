@@ -32,8 +32,26 @@ is documented to the standard of its siblings.
 3. **Accessibility.** Keyboard access to everything, visible focus, ARIA labels on the map
    and grid, room codes as well as colours, reduced-motion handling for the replay,
    contrast in both themes.
+   *Done, and four of the six were genuinely missing rather than partly there. **The map's
+   room buttons were announced as nothing:** the plan carried `role="img"`, which makes an
+   element a leaf in the accessibility tree, so the `role="button"` on each room was never
+   exposed — they were keyboard-focusable the whole time and silent. The role is now
+   conditional: a picture on the briefing and the summary, a group of buttons where there
+   is something to click. **The replay is a `setInterval`,** which no `@media
+   (prefers-reduced-motion)` block can reach; the two CSS animations were already guarded
+   and the one the plan named was not. **Every toggle-shaped button said nothing about its
+   state** — the pane tabs, the cross-out/place modes and both of the accusation's radio
+   groups showed the selection as a colour and nothing else. And **contrast was measured
+   rather than judged**, which found seven failures in the light theme and three in the
+   dark. `npm run contrast` is now a tool: 78 pairs, both themes, exits non-zero. The one
+   that matters most is that a crossed-out room code — the single most-read thing in the
+   game — was rendering at 2.26 with a further `opacity: 0.55` on top of it.*
 4. **Icons.** Adapt Signpost's `scripts/gen-icons.mjs`; keep the ink inside the maskable
    safe zone.
+   *Already done in wave 0 and verified here rather than rebuilt: the ink reaches r=33.3%
+   against a 40% limit, the manifest declares a maskable 512, and re-running the generator
+   produces byte-identical files — which is the check worth doing, because it proves the
+   PNGs on disk are the ones the script makes.*
 5. **Errors people will actually hit:** no key, quota exhausted, blocked content, offline
    during generation. Each gets a plain sentence and a way forward (usually: play a pack
    case).

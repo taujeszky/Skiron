@@ -288,7 +288,10 @@
   .chip.struck {
     color: var(--cell-out);
     text-decoration: line-through;
-    opacity: 0.55;
+    /* No `opacity` any more. It used to be 0.55, which dropped a crossed-out
+       room code well under any readable contrast — and this is the single
+       most-read thing in the game. The strike-through is what says "ruled
+       out"; the colour only has to stay legible while it does. */
   }
 
   @media (max-width: 900px) {
