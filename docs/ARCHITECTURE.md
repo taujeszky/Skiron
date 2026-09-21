@@ -679,6 +679,23 @@ concealed — the complaint is about the *button*, not the case. And changing a
 generation step means bumping `CASE_ID_VERSION` (invariant 4), which is free
 today only because nothing is published.
 
+***That last reason expired on 2026-09-21, and it expired in the direction that
+makes the decision firmer rather than looser.*** *Skiron is live, so a case id
+is now a thing a stranger can write down and hand to somebody else, and a
+bumped `CASE_ID_VERSION` silently re-points every one of them at a different
+puzzle. The argument above was "this costs nothing yet, and the benefit is
+small"; it is now "this costs something real, and the benefit is still small".*
+
+*The **shipped packs are not at risk**, and it is worth being exact about why,
+because the opposite is the natural assumption: a pack stores the whole case
+and is not rebuilt by the engine on the way in — that is the documented
+exception to invariant 4 and the reason `llm/pack.ts` exists. Its
+`caseIdVersion` field is carried so a pack can say how old it is and so a
+future migration has something to switch on; nothing rejects a pack on it.
+`parseCaseId` likewise accepts any version on purpose, so that the app can
+tell a stale id from a typo. So the cost of a bump falls entirely on ids
+people have shared, which before 2026-09-21 was nobody.*
+
 What was done instead costs nothing: the home screen now says, under the four
 presets, that the grade is the reasoning the case turned out to need and can
 come in under the one asked for. Wave 4's "reads as a bug and is not" is a

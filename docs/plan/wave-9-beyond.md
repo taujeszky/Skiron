@@ -47,9 +47,31 @@ Waves 0–8 done. Wave 8's task 8 — the three owner gates — was offered on
 here on is published as it is pushed.
 
 963 tests in ~13 s, `npm run check` 0/0 over 526 files, `npm run contrast` 0 of
-78 pairs, `npm run offline` PASS. Twelve illustrated cases and two tutorial
+78 pairs, `npm run offline` PASS — including against the live site, which is
+the stronger form of that check. Twelve illustrated cases and two tutorial
 lessons ship. (956 and 525 when this section was written; the difference is
 the hardening pass at the foot of this file, which started no wave-9 item.)
+
+### What is actually pending (2026-09-21, end of day)
+
+**Nothing is in flight.** The tree is clean, `main` is pushed, and the live
+site is the build that `npm run deploy` last made — check that with the
+service worker's cache stamp rather than assuming, because a push does not
+deploy and nothing records which commit a deploy came from. See CLAUDE.md,
+"Pushing is NOT deploying".
+
+The one live thread is the owner's: **they said they would try the game soon.**
+That matters more than it sounds, because the single thing wave 8 did not
+settle is whether a case can be *solved in words* — see "How it plays" in
+CLAUDE.md, item 3. Nobody has done it, not the scripted player and not a
+person, and shipping did not change that. If they come back with an account of
+playing it, that is the measurement, and it should be written into CLAUDE.md's
+"How it plays" the way wave 4's verdict was, rather than thanked for and
+forgotten. If it turns out the free-text layer does not carry a whole case,
+the lever named since wave 4 is the cast list, not the scoring.
+
+Nothing else is owed. Wave 9 is optional, unplanned, and the header at the top
+of this file still stands: do not start any of it on your own initiative.
 
 ### Read this first: "one file plus one registry line" is not true
 

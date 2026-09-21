@@ -65,6 +65,7 @@ npm run contrast               # WCAG contrast for both themes. Non-zero if anyt
 npm run tutorial               # rebuild the two tutorial cases. No key, no network.
 npm run offline                # cut the network and generate a case from the cache
                                # (needs `npm run build && npm run preview` up)
+npm run offline -- --url https://skiron-e0f.pages.dev/   # the same, against the LIVE site
 npm run author -- --estimate   # what a paid batch would cost. Makes NO calls.
 npm run author -- --dry-run    # the whole authoring pipeline, stubbed, no key
 npm run author -- --cases 3    # the real thing (ask the owner first)
@@ -75,7 +76,8 @@ npm run author -- --dry-run --art         # the whole art path, stubbed, no key
 npm run author -- --art --quality fast    # the real thing (ask the owner first)
                                # --suspects-only and --no-scene are the size levers
 npm run test:live              # the tests that spend money. Never part of npm test.
-npm run deploy                 # build + wrangler pages deploy (ask first)
+npm run deploy                 # build + wrangler pages deploy to `skiron` (ask first).
+                               # This, not `git push`, is what changes the live site.
 npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/test fail
                                # with "Cannot find module ./.svelte-kit/tsconfig.json"
 ```
@@ -90,7 +92,11 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
    this; a new rule joins that guard.
 4. **Determinism.** Same case ID ⇒ byte-identical case. No `Math.random`, `Date` or DOM
    in `src/lib/engine/`. Bump the ID version if the RNG, iteration order or any generator
-   step must change.
+   step must change. **Since 2026-09-21 that bump is no longer free**: the site is live,
+   so a case id is something a stranger can write down, and a bump re-points every shared
+   id at a different puzzle. The shipped packs are fine — a pack stores the whole case
+   and is the documented exception — so the cost falls on shared ids alone. ARCHITECTURE
+   section 9 has the argument.
 5. **Accusation, Check and win detection never go through a solver.** They compare with
    the stored truth, so a solver bug cannot hand out a bogus win.
 6. **No LLM prose reaches the player unverified.** Parse-back equality, or the template
@@ -175,7 +181,22 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
   hides the first.
 - **`npm run playthrough` needs the dev server, `npm run offline` needs the built one.**
   `vite dev` serves no service worker and no content-hashed chunks, so pointing the
-  offline check at :1430 tests nothing and says so.
+  offline check at :1430 tests nothing and says so. `npm run offline` also takes
+  `--url`, and pointing it at <https://skiron-e0f.pages.dev/> is the strongest check
+  there is after a deploy: it is the deployed artefact rather than a local build, and it
+  proves the worker installs, a case generates with the plug out and a shipped pack
+  opens.
+- **Pushing is NOT deploying. There is no CI.** The repository has no `.github`
+  directory and the Cloudflare Pages project's Git Provider is "No" — it is direct
+  upload only, so `git push` publishes the *source* and changes nothing a visitor sees.
+  Only `npm run deploy` moves the site, and it builds first, so a deploy from a dirty or
+  stale tree ships that tree. The trap is the obvious one: fix a bug, push it, load the
+  site, and find the bug still there. **Which build is live is measurable, not a
+  memory** — the service worker's cache stamp is in the file:
+  `curl -s https://skiron-e0f.pages.dev/service-worker.js | grep -o "1789[0-9]*" | head -1`
+  against the same grep of `build/service-worker.js`. Same trick as the stale-profile
+  gotcha further down, one machine along. Nothing anywhere records which *commit* a
+  deploy came from, so the stamp is the only thread back.
 - **A preview server left running on :4173 serves a STALE build, and your new one fails
   silently.** `vite preview` exits with "Port 4173 is already in use" into whatever log
   you redirected it to, the old process keeps answering, and `npm run offline` then

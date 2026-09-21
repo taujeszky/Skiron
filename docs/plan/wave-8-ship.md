@@ -191,6 +191,11 @@ Cloudflare project exists. The fourth gate, paid API calls, has been used
 three times and the pattern is in ARCHITECTURE: bring a measured number, they
 answer with a ceiling.
 
+*Written at the start of the wave, kept as written. All three gates were used
+on 2026-09-21 — task 8 below has the record. **The consequence that outlives
+this file:** a case id is now something a stranger can hold, so bumping
+`CASE_ID_VERSION` is no longer free. See ARCHITECTURE section 9.*
+
 ### Read this before anything else — *done, first thing in wave 8*
 
 **`README.md` still says "Design phase — no code yet."** It has said that
