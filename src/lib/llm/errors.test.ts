@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LlmError, llmErrorMessage, scrub } from "./errors";
+import { LlmError, llmErrorMessage, scrub, writingFailureMessage } from "./errors";
 
 /** Shaped like a real one, and not one: 39 characters, `AIza` prefix. */
 const FAKE_KEY = "AIzaSyB7t2Qw9LmN4pR0xZcVfHkJdEeTgUiOaPs";
@@ -109,5 +109,39 @@ describe("LlmError", () => {
       // Never the raw provider text: these go on screen.
       expect(text).not.toContain("raw");
     }
+  });
+  /*
+   * Wave 8, task 5. The sentences below existed from wave 5 and the writing
+   * path was not using them: `dressCase` put `err.message` on screen, so a
+   * quota failure showed the provider's raw JSON. These two say what the
+   * player must see instead.
+   */
+  it("tells the player what to do, for every kind", () => {
+    const kinds = [
+      "no-key",
+      "bad-key",
+      "quota",
+      "blocked",
+      "malformed",
+      "network",
+      "cancelled",
+    ] as const;
+    for (const kind of kinds) {
+      const text = writingFailureMessage(new LlmError(kind, "raw"));
+      // The complaint, then the way out: both halves, never one.
+      expect(text).toContain(llmErrorMessage(new LlmError(kind, "x")));
+      expect(text.length).toBeGreaterThan(
+        llmErrorMessage(new LlmError(kind, "x")).length,
+      );
+      expect(text).not.toContain("raw");
+    }
+  });
+
+  it("never carries a key into a message the player sees", () => {
+    const leaky = new Error(
+      "request to https://api.example/v1?key=AIzaSyA1234567890123456789012345678901 failed",
+    );
+    const text = writingFailureMessage(LlmError.from(leaky));
+    expect(text).not.toContain("AIzaSyA1234567890123456789012345678901");
   });
 });

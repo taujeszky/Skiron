@@ -144,6 +144,57 @@ function retryAfterOf(cause: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+/**
+ * The way out of a failure that happened while a case was being written.
+ *
+ * The second half of wave 8's task 5, and the half that was actually missing.
+ * The sentences below existed from wave 5 and said what went wrong; none of
+ * them said what to do, and the most important thing to say is the same every
+ * time: **the case is already built, already fair, and already playable.**
+ * The writing is decoration that failed. A player who is told only "the model
+ * is out of quota" has no way of knowing they are one click from a perfectly
+ * good puzzle.
+ *
+ * Separate from `llmErrorMessage` because the other caller is a note dropped
+ * into an interrogation transcript, where "go and play a different case"
+ * would be a strange thing for the game to say mid-conversation.
+ */
+function wayForward(kind: LlmErrorKind): string {
+  switch (kind) {
+    case "no-key":
+      return (
+        "The case below is ready and every clue has an engine-written " +
+        "sentence, so you can play it now. A key only changes the telling."
+      );
+    case "bad-key":
+      return "Check it on the settings screen. The case is ready either way.";
+    case "quota":
+      return "The case is ready now; the writing is worth another try in a minute.";
+    case "blocked":
+      return "Try a different setting, or play this case as it is.";
+    case "malformed":
+      return "Worth one more try. The case is playable in the meantime.";
+    case "network":
+      return (
+        "The case is ready and needs no network — and neither do the cases " +
+        "that shipped with the site."
+      );
+    case "cancelled":
+      return "The case is ready.";
+  }
+}
+
+/**
+ * What to put on screen when the writing fails: what happened, and what to do.
+ *
+ * One string rather than two fields because there is one place it goes — the
+ * panel on the case — and a caller that had to join them could join them
+ * wrongly.
+ */
+export function writingFailureMessage(error: LlmError): string {
+  return `${llmErrorMessage(error)} ${wayForward(error.kind)}`;
+}
+
 /** A human sentence for a failure, safe to put on screen. */
 export function llmErrorMessage(error: LlmError): string {
   switch (error.kind) {

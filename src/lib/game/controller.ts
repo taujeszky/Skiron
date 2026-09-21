@@ -43,7 +43,7 @@ import { topic } from "$lib/engine/types";
 // Types and one pure function; nothing here pulls the provider SDK into the
 // app bundle, and `glossaryFor` is the only bridge between game and llm.
 import { glossaryFor } from "$lib/llm/skin/glossary";
-import { LlmError, llmErrorMessage } from "$lib/llm/errors";
+import { LlmError, llmErrorMessage, writingFailureMessage } from "$lib/llm/errors";
 import { hasKey, browserKey } from "$lib/llm/key";
 import type { Provider } from "$lib/llm/provider";
 import { initSkins, skins } from "$lib/llm/skinStore";
@@ -439,7 +439,12 @@ export async function openPackCase(
   const loaded = await loadPackCase(id, pack);
   loading.set(null);
   if (!loaded) {
-    panel.set({ kind: "error", text: "That case could not be opened." });
+    panel.set({
+      kind: "error",
+      text:
+        "That case could not be opened. Its file may not have finished " +
+        "downloading yet — try again, or take a case by number.",
+    });
     return false;
   }
   const caseId = parseCaseId(loaded.id);
@@ -489,7 +494,15 @@ async function open(id: CaseId, save?: Save, dress?: string): Promise<void> {
       loading.set(null);
       const message = err instanceof Error ? err.message : String(err);
       if (message !== "cancelled") {
-        panel.set({ kind: "error", text: `That case could not be built: ${message}` });
+        // Not an `LlmError` — this is the engine or the worker, and no model
+        // is involved. It still gets the same shape of answer: what happened,
+        // then somewhere to go.
+        panel.set({
+          kind: "error",
+          text:
+            `That case could not be built: ${message}. Try again, or take one ` +
+            `of the cases that shipped with the site — those need nothing at all.`,
+        });
       }
     }
     return;
@@ -635,7 +648,11 @@ async function dressCase(
 
   const stored = await skins().get(key);
   if (stored) return stored;
-  if (!wanted || wanted.trim() === "" || !hasKey()) return null;
+  // A stub provider stands in for the key as well as for the model, so a test
+  // can exercise the writing path without one.
+  if (!wanted || wanted.trim() === "" || (writeProvider === null && !hasKey())) {
+    return null;
+  }
 
   const controller = new AbortController();
   writing = controller;
@@ -644,10 +661,13 @@ async function dressCase(
   say("Writing the case…");
 
   try {
-    const { geminiProvider } = await import("$lib/llm/gemini");
     const { authorSkin } = await import("$lib/llm/skin/author");
+    const provider =
+      writeProvider !== null
+        ? writeProvider()
+        : (await import("$lib/llm/gemini")).geminiProvider({ key: browserKey() });
     const out = await authorSkin(
-      geminiProvider({ key: browserKey() }),
+      provider,
       g.case,
       {
         setting: wanted.trim(),
@@ -666,19 +686,36 @@ async function dressCase(
     await skins().put(key, out.skin);
     return out.skin;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message !== "cancelled") {
+    // Wave 8 found the bug here. This used to be `err.message` straight onto
+    // the screen, so a quota failure showed the provider's raw text — from
+    // the CLI that is a 200-character JSON blob with `@type` and `domain` in
+    // it. The seven plain sentences had existed since wave 5 and the most
+    // visible path in the app was not using them.
+    const error = LlmError.from(err);
+    if (error.kind !== "cancelled") {
       // Said once, on the case itself, rather than as an error screen: the
-      // case is fine and the player can play it.
-      panel.set({
-        kind: "error",
-        text: `The case is ready, but could not be written: ${message}`,
-      });
+      // case is fine and the player can play it — which is what the second
+      // sentence of `writingFailureMessage` exists to say out loud.
+      panel.set({ kind: "error", text: writingFailureMessage(error) });
     }
     return null;
   } finally {
     if (writing === controller) writing = null;
   }
+}
+
+/**
+ * Injected by tests, exactly as `useAskProvider` and `useArtProvider` are.
+ *
+ * Added in wave 8 because the *writing* path was the one of the three with no
+ * seam, and it was the one carrying the bug: a failure there put the
+ * provider's raw message on screen for three waves. A path nothing can drive
+ * is a path nothing checks.
+ */
+let writeProvider: (() => Provider) | null = null;
+
+export function useWriteProvider(make: (() => Provider) | null): void {
+  writeProvider = make;
 }
 
 /** Is there a key, so the home screen can offer the setting box at all? */

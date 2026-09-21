@@ -37,6 +37,16 @@ is documented to the standard of its siblings.
 5. **Errors people will actually hit:** no key, quota exhausted, blocked content, offline
    during generation. Each gets a plain sentence and a way forward (usually: play a pack
    case).
+   *Done. The plain sentences turned out to exist already, from wave 5, and the writing
+   path was not using them: `dressCase`'s catch put `err.message` on screen, so a quota
+   failure showed the provider's raw JSON. Two things follow from that. The **way forward
+   is not "play a pack case"** — the case that just failed to be written is itself built,
+   certified twice and on screen, so the right sentence is that this one is ready. And the
+   raw message was **unscrubbed**, so a provider that put the request URL in its error
+   text would have printed the player's own key on the screen; `LlmError.from` scrubs, and
+   a test now holds it. The bug survived three waves because the writing path was the one
+   of the three model paths with no test seam — `useWriteProvider` is the fix for that,
+   and `game/writing.test.ts` drives it.*
 6. **Export and import** a whole case as a file, so a generated case can be shared with
    its prose. The key is never part of it.
 7. **Docs.** Finish `docs/ARCHITECTURE.md`. Rewrite `README.md` from the plan-phase
