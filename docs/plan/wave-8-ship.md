@@ -92,16 +92,38 @@ is documented to the standard of its siblings.
    version into the siblings' shape: pitch, what makes it different, controls, development,
    how it works. Bring `CLAUDE.md` up to date, including a "How to add a clue type"
    section.
+   *Done. ARCHITECTURE gains section 14; CLAUDE.md gains the clue-type walkthrough, three
+   new gotchas and a rewritten state section. The README was rewritten first, before
+   anything else in the wave, because task 8 builds a public repository around it — and
+   **its controls table was wrong on the first pass**: there is no right-click in the
+   notebook, crossing out is the default mode and a double-click is what places. Written
+   from memory, corrected by reading `Grid.svelte`. This plan file's own opening said
+   "Nothing is built yet" too, and now says what it actually is: the design as written,
+   kept as written, with every correction recorded in the wave file rather than edited
+   out from under itself.*
 8. **With the owner's go-ahead:** create `github.com/taujeszky/Skiron` and push; final
    deploy; then add Skiron to the portfolio catalog — a `PROJECTS` entry in
    `../index.html` (that file has very long lines; read it in slices) and card art through
    `../catalog-art`.
+   *Not started: all three are owner gates and none has been asked for yet. Everything
+   else in the wave is done, so this is the only thing between Skiron and being public.*
 
 ## Exit criteria
 
 - A first-time visitor on a phone can finish the tutorial and an Easy case without help.
+  *Checked at a real 390x844 viewport over CDP: no horizontal overflow on the home,
+  briefing or investigate screens, the tutorial's notebook fits without horizontal
+  scrolling, and the coach strip advances from "examine" to "ask" to "mark" as the rooms
+  are searched and the questions asked. With the preview server **stopped** — not
+  emulated offline, which does not cut the service worker — the desk came back from
+  cache, both lessons were offered, and lesson one opened with its prose. `npm run
+  offline` generates and plays all four difficulties with the plug out.*
 - `npm test`, `npm run check` and the pack test are green, and the sim table is recorded.
-- README, CLAUDE.md and ARCHITECTURE.md describe the project as it is.
+  *956 tests, check 0/0 over 525 files, and `npm run contrast` at 0 of 78 pairs, which is
+  new. Both the sim and par tables are in ARCHITECTURE section 9.*
+- README, CLAUDE.md and ARCHITECTURE.md describe the project as it is. *Done.*
+
+**The wave is complete except task 8, which is three owner gates.**
 
 ---
 

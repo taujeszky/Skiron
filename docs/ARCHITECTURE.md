@@ -1898,3 +1898,191 @@ real decoded pixels, the evidence pane's cast strip showed four more, **the
 evidence card itself showed none**, and the map tokens were still coloured
 letters. That last pair is the invariant holding where it matters: a card is
 text, and a token is a placement claim, so neither may be a photograph.
+
+---
+
+## 14. Shipping it
+
+Wave 8 is the wave that turns a working game into something a stranger can
+open. Most of what it found was not missing features but **claims that had
+stopped being true**, and the pattern is worth naming before the details: in
+four of the eight tasks, the thing the plan asked for already existed and was
+not being used, or existed and was not doing what it said.
+
+### The tutorial: a case smaller than any preset
+
+Two lessons ship in `static/cases/tutorial/`, built by `npm run tutorial` —
+deterministic, offline, no key, no money.
+
+The plan wanted three suspects and four rooms, which is smaller than Easy's
+four and five, and `generate` takes its shape from `presetFor(id.preset)`:
+`GenerateOptions.select` overrides the clue *mix* and never the shape. Two
+routes existed. A fifth `PresetName` is clean in `caseId.ts`, where
+`PRESET_LETTERS` is deliberately the one place a preset becomes a letter, and
+messy in the other thirteen non-test files it is threaded through — and it
+would give a tutorial a row in the player's statistics, which no tutorial
+should have. A pack already stores the whole case rather than the seed (§11),
+so a case whose id does not rebuild it is exactly what a pack is for.
+
+So: `GenerateOptions.shape`, beside `select` and carrying the same warning —
+**a case generated with it is not the case its id names**, and it may only be
+used for a case that is then stored whole.
+
+**The skin carries names and no per-clue prose.** `verifyPack` requires every
+card to have either written prose or a template sentence, and the template
+renderer covers all seventeen kinds through whatever glossary it is handed. A
+skin with room, hour and person names and an empty `prose` map therefore
+produces "Tom Pike was in the Parlour at ten o'clock" for every card — the
+engine's own sentence wearing the tutorial's names. That is the right
+register for a lesson: uniform, predictable, and with nothing a model could
+get wrong because no model was asked.
+
+**Three corrections the code forced on the plan.**
+
+1. **Lesson two needs five slots, not four.** With lying on, a four-slot case
+   has nowhere for a false alibi to live, and the trust tier never fires; it
+   graded below the floor every time. Three suspects and four rooms held.
+2. **"Clearing someone to trust them" is not a rule you can point at.** The
+   solver's only two tier-3 rules are `self-incrimination` and
+   `conflict-pair`. Trust is the *mechanism* underneath them
+   (`solver/state.ts#trustedMask`): clearing a suspect makes their testimony
+   active, and the tier-0 rules then use it. It is visible only as the payoff
+   of a tier-3 step, so the seed chosen for lesson two is one whose trace does
+   exactly that, in four consecutive steps — Nora cleared by opportunity,
+   Ida's own statements shown impossible, and *then* Walter's card, worthless
+   while he might have been lying, fixing the hour.
+3. **The coach marks are a strip that reads the game state, not a spotlight
+   over a button.** A spotlight needs every step to name a live DOM node,
+   which ties five steps to the markup of four components and breaks silently
+   the first time one is rearranged — and the UI is not tested, so nothing
+   would catch it. A strip that reads `Game` cannot point at the wrong button
+   because it points at nothing. Steps also never block: each retires on some
+   state that does not require doing exactly what it asked, because a tutorial
+   that will not proceed until you press its button is worse than none.
+
+### The shipped case you could not resume
+
+Found by trying to resume the tutorial, and true of all twelve shipped cases
+since wave 5.
+
+`Save` held the case id and nothing else about the case, which is invariant 4
+doing real work everywhere except here. A pack stores the whole case
+*because* its id may stop rebuilding it — that is the argument at the top of
+`llm/pack.ts` — so "Carry on" regenerating a pack case from its id threw away
+the prose and the pictures that came in the file, and after any tuning change
+to the generator would have handed back a different puzzle with the old marks
+on it. Today it happens to rebuild the same case, which is precisely why
+nothing noticed.
+
+`Save.pack` records where the case came from; `resume` reopens the file
+instead. `game/resume.test.ts` is written so that removing the branch fails
+it, which needs each test to assert something a *rebuilt* case would not have
+— the frame is identical, so only the skin distinguishes the two paths.
+
+### Errors: the sentences existed and the screen was not using them
+
+`llm/errors.ts#llmErrorMessage` has turned all seven `LlmError` kinds into
+plain sentences since wave 5. It had exactly one caller — the note added to a
+transcript when a typed question fails. The *writing* path, which is the one
+a player meets first, did `err instanceof Error ? err.message : String(err)`
+and put that on screen: for a quota refusal, 200 characters of JSON with
+`@type` and `domain` in it.
+
+Two things fell out of fixing it.
+
+**The way forward is not "play a pack case".** The plan's wording assumed the
+failure left the player with nothing. It does not: the case that failed to be
+written is already built, already certified twice and already on screen, so
+the sentence that helps is that *this* case is ready. `writingFailureMessage`
+gives both halves.
+
+**The raw message was never scrubbed.** `LlmError.from` runs `scrub`, which
+exists because the most likely way a key escapes is a provider SDK putting
+the request URL into an error message. Bypassing it to print `err.message`
+bypassed that too, so a provider that quoted its own URL would have printed
+the player's key on the screen. This is invariant 9's near-miss, and a test
+now holds it.
+
+It survived three waves because **writing was the one model path with no test
+seam**: `useAskProvider` and `useArtProvider` existed, `useWriteProvider` did
+not. A path nothing can drive is a path nothing checks.
+
+### A case as a file
+
+`game/transfer.ts`, in the pack format rather than a second one — a second
+format would be a second thing to keep in step with `GeneratedCase`, and the
+first time they drifted the symptom would be an imported case with an empty
+bank.
+
+**A file is the one way a case reaches a player with nobody having certified
+it.** A shipped pack was proved by the authoring tool and is re-proved by
+`shipped.test.ts` on every `npm test`; a generated case is proved twice as it
+is made. So `importCase` re-runs `verifyPack` — the exhaustive oracle and the
+deduction solver, about a second on the largest case — before the case opens,
+and refuses a file whose evidence does not prove the answer it claims. A
+second in a render loop is unacceptable and a second to open a file is
+ordinary; this is the only moment where the cost can be paid at all. The
+refusal never quotes the file back, because `verifyPack`'s complaints name
+card ids and are written for a developer.
+
+The pictures are dropped and the file says so: `CasePack.images` lists subject
+keys, not bytes, so carrying them would mean inlining base64 and multiplying
+the file by thirty. The progress is dropped too — this shares a case, not a
+save, and a half-solved export hands over the answer in the shape of the
+marks. The key is kept out by where it lives rather than by filtering, and a
+test asserts that against the real exported bytes anyway, because "cannot
+happen by construction" is exactly the claim that stops being true quietly.
+
+### Accessibility, measured
+
+Four of the plan's six items were missing rather than partly there.
+
+**The map's rooms were announced as nothing.** `Plan.svelte` carried
+`role="img"` on the svg, which makes an element a leaf in the accessibility
+tree: the `role="button"` and `aria-label` on each room were never exposed.
+They had been keyboard-focusable and silent since wave 4. The role is now
+conditional — a picture where there is nothing to click, a group of buttons
+where there is.
+
+**The replay is a `setInterval`,** so no `@media (prefers-reduced-motion)`
+block can reach it. The two CSS animations were guarded from the start; the
+one the plan named by name was not. `ui/motion.ts` is the seam, and the
+replay no longer starts itself.
+
+**Every toggle-shaped button showed its state only as a colour** — the pane
+tabs, the cross-out/place modes, and both of the accusation's groups.
+
+**Contrast is computed, not judged.** `npm run contrast` reads the variables
+out of `app.css`, pairs them the way the game actually renders them, and
+exits non-zero: 78 pairs, both themes. It found seven failures in the light
+theme and three in the dark. The worst was the single most-read thing in the
+game — a crossed-out room code at 2.26 with a further `opacity: 0.55` on top
+of it, which is also the tool's own blind spot, since it measures a colour
+without the opacity beside it.
+
+`--control-border` is new. A text input is `background: var(--bg)` on a
+`var(--bg)` page, so its border is the only thing that says it is an input,
+and WCAG 1.4.11 wants 3:1 for that; `--panel-border` was at 1.46 light and
+1.35 dark. Raising it would have drawn a heavy line around every panel in the
+game, so the two uses were pulled apart instead. A panel's own edge is
+decoration and is deliberately not on the list.
+
+### The balance pass that changed nothing
+
+1200 cases over four presets reproduced wave 3's table at two and a half
+times the sample, with zero certificate failures; `npm run par` over 160
+fresh cases reproduced wave 4's undirected means to the decimal. Both tables
+are in §9. Nothing was tuned, which is a result and not a shortcut.
+
+The one number worth arguing about — Expert delivering Expert 29% of the time
+— was priced rather than argued about, and the measurement is in §9 too. The
+short version: forcing it costs a 3.3× p95 on the slowest preset on the
+slowest device, the grade shown was already honest, and the complaint is
+about the button rather than the case, so the button now explains itself.
+
+### Icons
+
+Nothing to do. The ink reaches r=33.3% against the 40% maskable limit, the
+manifest declares a maskable 512, and re-running `scripts/gen-icons.mjs`
+produces byte-identical files — which is the check worth doing, because it
+proves the PNGs on disk are the ones the script makes.

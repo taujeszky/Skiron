@@ -205,6 +205,54 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 - For Node-side Gemini image calls and `sharp`, copy what already works in
   `../catalog-art`, including how it reads the key.
 
+## How to add a clue type
+
+The clue language is a closed set behind one registry, and the type system is what
+makes adding to it safe: `MODULES` in `engine/clues/index.ts` is
+`{ [K in ClueKind]: KindModule<K> }`, so a kind with no module, or a module filed
+under the wrong kind, does not compile. Work in this order and the compiler tells
+you what is left.
+
+1. **Declare the payload** as a member of `ClueBody` in `engine/types.ts`. Add the
+   name to `CLUE_KINDS` in `clues/index.ts` too — that list is written out by hand
+   rather than read off `MODULES` because the generator iterates it and the order is
+   part of invariant 4.
+2. **Write the module** in the file its family belongs to — `presence.ts`,
+   `company.ts`, `counting.ts`, `victim.ts`, `rules.ts` — and add it to `MODULES`.
+   The compiler now demands `holds`, `canonical`, `normalise`, `valid`, `topicKeys`,
+   `template` and `fields`. Two of those are easy to get subtly wrong:
+   - `normalise` has to sort every unordered field and order every span, or two
+     clues that mean the same thing get different canonical forms and the fidelity
+     check starts rejecting good prose.
+   - `fields` declares the domain of every payload field except `kind`, and the
+     mapped type is exact. `clues/schema.ts` derives **both** the JSON schema the
+     model is constrained by and the reader that turns its answer back into a clue,
+     from this one declaration — which is the point: wave 5 changed the plan here,
+     because hand-writing seventeen schema fragments is seventeen chances for the
+     schema, `valid` and the frame's real bounds to drift apart silently, inside the
+     one check whose whole job is noticing that two things disagree.
+3. **Teach the generator to produce it**, in `generator/enumerate.ts`. A physical
+   clue also needs `physical()` to say so, which is what decides whether it is found
+   by examining a room or told by a suspect.
+4. **Give it a weight** in `generator/select.ts`. `DEFAULT_WEIGHTS` covers every
+   kind, and `PLACING` / `INDIRECT` are the overrides that make the harder presets
+   harder. A kind that pins a cell outright belongs in `PLACING`; see ARCHITECTURE
+   section 9 on why starving the top presets of those is what separated Expert from
+   Hard.
+5. **Propagators, if it can drive a deduction.** `propagate` on the module, and a
+   rule in the right `solver/rules/tierN.ts`. Only forced eliminations — invariant 3
+   — and **the new rule joins the oracle test**, which is not optional: that suite is
+   the only thing standing between a soundness bug and a case that cannot be solved.
+6. **Run the guards.** `npm test` covers the registry's own completeness tests
+   (`clues.test.ts`, `schema.test.ts`, `explain.test.ts` all iterate `CLUE_KINDS`, so
+   a missing template or an unparseable schema fragment fails without a new test
+   being written). Then `npm run sim` to see what the new kind does to the tables,
+   and record it in ARCHITECTURE section 9 if you keep it.
+
+**What you do not have to touch:** anything outside `engine/clues/` that switches on
+`body.kind`. There is deliberately none — everything dispatches through the registry,
+including the UI, the hint text, the pack codec and the LLM layer.
+
 ## Conventions
 
 - Engine tests live next to the code as `*.test.ts`, run in Node, no DOM.
@@ -217,10 +265,12 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
 
 ## State of the project (2026-09-21)
 
-**Waves 0-5 done; wave 6 built and stubbed.** 781 tests green in ~13s, `npm run check`
-at 0/0 over 503 files. The game is playable end to end, offline, and every case can be
-dressed by a model whose every sentence is checked against the evidence before the
-player sees it. Measured fallback rate: **0% over 23 cases and 888 cards**.
+**Waves 0-7 done; wave 8 done except its owner gates.** 956 tests green in ~13s,
+`npm run check` at 0/0 over 525 files, `npm run contrast` at 0 of 78 pairs. The game is
+playable end to end, offline, with no key: twelve illustrated cases and two tutorial
+lessons ship with the site, and every case a model writes has every sentence checked
+against the evidence before the player sees it. Measured fallback rate: **0% over 23
+cases and 888 cards**.
 
 - **Wave 0** - toolchain: SvelteKit + Svelte 5 + Vitest + adapter-static, `vite-node` for
   Node tools, generated icons, PWA manifest.
@@ -307,12 +357,36 @@ findings - 27% of expert-preset seeds actually grade expert, a 54-card case can 
 the writer's 90s timeout - are in ARCHITECTURE.md section 13 under "What the paid run
 actually found".
 
-Next: wave 8 - tutorial, polish, docs, repo, deploy, catalog. **It is the wave that
-makes Skiron public**, and three of the four gates above are its: the GitHub repository,
-the first Cloudflare deploy, and the portfolio catalog entry. Nothing is published and no
-Cloudflare project exists. `docs/plan/wave-8-ship.md` ends with what waves 5-7 hand it,
-including the one thing to fix before a public repository exists: **`README.md` still
-says "Design phase - no code yet."**
+- **Wave 8** - shipping it. Two tutorial lessons in `static/cases/tutorial/` behind a
+  coach strip that reads the game state (`game/tutorial.ts`), a case as a file that is
+  **re-proved on the way in** (`game/transfer.ts`), an accessibility pass with
+  `npm run contrast` left behind as a permanent guard, a balance pass that re-measured
+  everything and deliberately changed nothing, and the README rewritten from its
+  plan-phase version. ARCHITECTURE section 14 has the whole account.
+
+**What wave 8 mostly found was claims that had stopped being true.** In four of its
+eight tasks the thing the plan asked for already existed and was either unused or not
+doing what it said. Three of those were shipping bugs:
+
+- **A shipped case could not be resumed.** `Save` held only the case id, so "Carry on"
+  *regenerated* a pack case — the one thing `llm/pack.ts` exists to say must not be
+  relied on — and dropped the prose and pictures that came in the file. `Save.pack`
+  fixes it. True of all twelve since wave 5, and invisible because the generator had not
+  changed yet.
+- **The writing path printed the provider's raw error.** Seven plain sentences had
+  existed since wave 5 with one caller; `dressCase` used `err.message` instead, which
+  for a quota refusal is 200 characters of JSON — and, because it bypassed
+  `LlmError.from`, was never scrubbed, so a provider quoting its own URL would have put
+  the player's key on screen. It lasted three waves because writing was the one model
+  path with **no test seam**; `useWriteProvider` closes that.
+- **The floor plan's rooms were announced as nothing.** `role="img"` on the svg makes an
+  element a leaf in the accessibility tree, so the `role="button"` on each room was
+  never exposed. Keyboard-focusable and silent since wave 4.
+
+Next: **task 8, which is the whole public release and is entirely owner gates** - create
+`github.com/taujeszky/Skiron` and push, the first Cloudflare deploy, and the portfolio
+catalog entry. Nothing is published and no Cloudflare project exists. Then wave 9, which
+is optional.
 
 ## How it plays (wave 4's verdict, in template text)
 
