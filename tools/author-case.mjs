@@ -71,7 +71,20 @@ const COUNT = Number(flag("cases", 3));
 const SEED = flag("seed", null);
 const LANGUAGE = flag("language", "en");
 const OUT = flag("out", "static/cases/starter");
-const NAME = flag("name", "starter");
+/**
+ * The pack's display name, which defaults to whatever the output directory is
+ * called rather than to the literal "starter".
+ *
+ * `--out` and `--name` used to default independently, so the obvious command
+ * for illustrating the tutorial —
+ * `npm run author -- --art-only --art --out static/cases/tutorial` —
+ * would rewrite that pack's manifest with `"name": "starter"`, because
+ * `writeManifest` rebuilds the manifest from whatever is in the directory. It
+ * would have been silent: nothing reads `manifest.name` on screen today.
+ * Deriving it from the directory makes the wrong pairing unreachable, and
+ * `--name` still overrides.
+ */
+const NAME = flag("name", OUT.split(/[\\/]/).filter(Boolean).pop() ?? "starter");
 const ESTIMATE = argv.includes("--estimate");
 const DRY = argv.includes("--dry-run");
 const NO_SPEECH = argv.includes("--no-speech");

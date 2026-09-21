@@ -4,7 +4,7 @@ The design is in [`plan/README.md`](plan/README.md). This file records what the 
 actually does and, where a choice was open, which way it went and why. Read it before
 touching `src/lib/engine/`.
 
-Sections arrive as the waves land. Anything not yet written is marked *(wave N)*.
+Sections arrived as the waves landed, and as of wave 8 **all fourteen are written** — nothing is marked *(wave N)* any more. Sections 11 to 14 each end with what a paid run or a shipping pass actually found, which is the part that could not have been predicted.
 
 ---
 
@@ -98,10 +98,23 @@ guarantee all rest on.
 ## 3. The clue language
 
 A small closed set, one module per kind under `engine/clues/`, gathered in a registry.
-A module supplies `holds`, `canonical`, `normalise`, `valid` and `topicKeys` now;
-`template` (wave 2), `propagate` (wave 2) and `schema` (wave 5) are declared in
-`ClueModule` so that adding a clue type is one new file plus one registry line rather
-than a sweep of `switch` statements.
+A module supplies `holds`, `canonical`, `normalise`, `valid`, `topicKeys`, `template`
+(wave 2) and `fields` (wave 5, and see §11 for why it is field domains rather than a
+schema fragment).
+
+**The aspiration this section used to state, and how far it actually got.** It said
+`ClueModule`'s slots meant "adding a clue type is one new file plus one registry line
+rather than a sweep of `switch` statements". Half of that came true and half did not,
+and wave 8 audited which half. Everything the *player reads* and everything the *model
+touches* really does dispatch through the registry — the sentences, the JSON schema, the
+parse-back, the UI, the pack codec. But the **solver and the generator switch on kind in
+six places**, `propagate` was declared as `unknown` in wave 2 and has never been filled,
+and only `exhaustive.ts` ends in a `never` assertion that fails the build. `tier0.ts` and
+`tier2.ts` enumerate all seventeen with no `default`, and their `applyClue` returns
+`void` — so TypeScript cannot check them, and an eighteenth kind would be handled by the
+oracle and **silently ignored by the deduction solver**. That is invariant 2's divergence
+arriving as neither a type error nor a certificate failure, only as a rise in
+`unsolvable` rejections. CLAUDE.md's "How to add a clue type" has the table.
 
 `canonical(body)` is a *syntactic* normal form, not a semantic one. `Saw(p,q,t,r)` and
 `Saw(q,p,t,r)` canonicalise the same, because as a formula the clue is symmetric and the

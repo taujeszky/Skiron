@@ -145,7 +145,15 @@ is documented to the standard of its siblings.
 
 ---
 
-## What waves 5, 6 and 7 hand you (written 2026-09-21, before wave 8 starts)
+## What waves 5, 6 and 7 hand you (written 2026-09-21, BEFORE wave 8 started)
+
+> **This section is history, not instructions.** It was written at the end of
+> wave 7 to brief wave 8, and wave 8 has since happened. Everything it tells
+> you to do has been done; what it got right and wrong is recorded in the task
+> notes above and in ARCHITECTURE section 14. It is kept because the *reasoning*
+> in it — how each question was sized before it was answered — is the useful
+> part, and because editing a briefing after the fact hides whether it was any
+> good. **Do not act on it.**
 
 The tasks above were written before any of the code existed. This is what is
 actually on disk, checked in the repository rather than remembered, and what
@@ -159,7 +167,7 @@ Cloudflare project exists. The fourth gate, paid API calls, has been used
 three times and the pattern is in ARCHITECTURE: bring a measured number, they
 answer with a ceiling.
 
-### Read this before anything else
+### Read this before anything else — *done, first thing in wave 8*
 
 **`README.md` still says "Design phase — no code yet."** It has said that
 since before wave 0 and it is the first thing a stranger sees — and task 8
@@ -167,6 +175,14 @@ creates a public repository around it. It is 52 lines, was written as a pitch
 for a plan, and is otherwise good: the idea, the eight rules and the stack are
 all accurate. Only the Status section and "Planned stack" are lies now. Fix it
 before the repository exists, not after.
+
+*Rewritten at the start of wave 8, into the siblings' shape. One thing to
+learn from: the controls table in the first draft was **wrong**, because it
+was written from memory — it claimed a right-click crosses a room out, when
+there is no right-click in the notebook at all, crossing out is the default
+mode and a double-click is what places. Reading `Grid.svelte` caught it. A
+README describes behaviour, so it has to be written from the code like
+anything else.*
 
 ### Task 1, the tutorial case: the one real design decision
 

@@ -1,11 +1,24 @@
 /**
- * The clue registry: the one place that knows the whole clue language.
+ * The clue registry: the one place that knows the whole clue *language*.
  *
- * Everything outside this directory dispatches through here rather than
- * switching on `body.kind`, so adding a clue type is a new file plus one line
- * in `MODULES` (ARCHITECTURE.md §3). The type of `MODULES` is what makes that
- * safe — a kind without a module, or a module filed under the wrong kind,
- * will not compile.
+ * Everything a player reads and everything the model touches dispatches
+ * through here rather than switching on `body.kind` — the sentences, the JSON
+ * schema, the parse-back, the UI. The type of `MODULES` is what keeps that
+ * safe: a kind without a module, or a module filed under the wrong kind, will
+ * not compile.
+ *
+ * **What this comment used to claim, and does not any more.** It said adding a
+ * clue type is "a new file plus one line in `MODULES`". That was wave 1's
+ * intention and it is not true: the *solver* and the *generator* switch on
+ * kind in six places outside this directory, and only one of them
+ * (`exhaustive.ts`, which ends in `const unreachable: never = b`) fails the
+ * build when a kind is added. `ClueModule.propagate` — the slot meant to keep
+ * the solver out of switch-land — is still `unknown` and has never been
+ * filled. CLAUDE.md's "How to add a clue type" lists all six and says which
+ * ones fail loudly. The dangerous two are `rules/tier0.ts` and
+ * `rules/tier2.ts`, whose `applyClue` returns `void`, so TypeScript cannot
+ * check them and a new kind would be silently ignored by the deduction solver
+ * while the oracle handled it.
  */
 
 import { testimonyBinds } from "../axioms";

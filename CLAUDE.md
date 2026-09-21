@@ -142,11 +142,31 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
   files into the repo and will happily overwrite one of yours with the same name. Do not
   `git add -A` while a workflow is running, tell agents to use a distinctive prefix and
   to clean up after themselves, and use worktree isolation for any agent that edits code.
+- **A Python patch script opened without `newline=""` rewrites the WHOLE FILE to CRLF.**
+  Worse than the next trap because it is invisible in the diff: on Windows `open(p, "w")`
+  translates every LF it writes into CRLF, so a one-line `str.replace` edit silently
+  converts every line ending in the file. `.gitattributes` normalises it back on commit,
+  so `git diff` comes back **empty** while `git status` still says modified — and
+  meanwhile the working copy is the thing that turned seven caught mutants into seven
+  false survivors (see the line-endings note above). Pass `newline=""` on BOTH the read
+  and the write. Wave 8 had to un-convert nine files this way, then did it again ten
+  minutes later while writing this very bullet, which is the argument for checking rather
+  than remembering. The check is
+  `git ls-files -z | xargs -0 grep -lU $'\r'` — **and validate it against a known-CRLF
+  file the first time you use it in a session.** If the `$'...'` quoting is lost anywhere
+  (a nested `$( )`, a rewritten command), grep silently searches for the *letter* `r` and
+  reports about 80% of the repository. That looks like a catastrophe and means nothing;
+  wave 8 lost several minutes to it. `-P '\r'` is unavailable here — grep refuses it
+  outside a unibyte or UTF-8 locale. `file <path>` is the unambiguous fallback: it prints
+  "with CRLF line terminators" or does not.
 - **A Python patch script will happily write a real newline into a JS string.** Writing
-  `"...\\n"` in a Python source that is itself inside a heredoc has bitten this project
-  twice, and the symptom is a syntax error in a file that looked fine in the diff. For a
-  string with an escape in it, split the line into two `console.log` calls or use the
-  Write tool.
+  a backslash-n in a Python source that is itself inside a heredoc has bitten this project
+  **three times**, and the symptom is a syntax error — or a mangled paragraph — in a file
+  that looked fine in the diff. The third time was wave 8 writing the bullet *above* this
+  one: the escapes in its own example became real line breaks and split the sentence
+  across four lines of CLAUDE.md. For any string containing a backslash escape, use the
+  Write or Edit tool. Not a cleverer heredoc — those two traps compose, and the second one
+  hides the first.
 - **`npm run playthrough` needs the dev server, `npm run offline` needs the built one.**
   `vite dev` serves no service worker and no content-hashed chunks, so pointing the
   offline check at :1430 tests nothing and says so.
@@ -174,11 +194,24 @@ npx svelte-kit sync            # regenerates .svelte-kit/tsconfig.json if check/
   impossible - they had never been fetched. `tools/offline.mjs` has the same blind spot
   and gets away with it because what it tests is in-page generation. To ask what is
   really cached, ask `caches.match()`; to really cut the network, stop the server.
+  **And once you have stopped it, a same-origin `fetch` is still not proof.** Wave 8
+  stopped the preview server and then fetched a deliberately-uncached same-origin URL to
+  confirm the plug was out: it came back **200**, because the service worker answers any
+  unmatched navigation with the SPA fallback. That is wave 4's mistake in a new hat —
+  "the offline check proved the network was cut by fetching the app's own URL". Prove it
+  from OUTSIDE the browser (a `curl` that fails) or with a cross-origin request;
+  `tools/offline.mjs` does the latter and prints "cross-origin requests are failing, so
+  the plug really is out".
 - **`tools/offline.mjs` reuses a Chrome profile, so a STALE service worker survives
   between runs.** The tell is in its own output: the cache name ends in the build's
   version stamp, so `cache "skiron-1789942356000"` after a newer build means the run
   tested the previous one. Delete `%LOCALAPPDATA%/Temp/skpt<port>` to force a clean
   install. This is a third member of the stale-preview family and bit wave 7 twice.
+  **The port is 9361**, so the directory is `skpt9361` — wave 8 deleted `skpt9230` (the
+  number from the CacheStorage gotcha above), got a PASS from a service worker two builds
+  old, and only noticed because the cache stamp did not match `build/service-worker.js`.
+  Compare them: `grep -o "1789[0-9]*" build/service-worker.js` against the cache name the
+  run prints.
 - **A string search of a GENERATED file is not evidence about what it does.**
   `build/service-worker.js` computes its precache list at runtime from arrays the
   bundler inlines, so grepping it for a path finds the raw `files` manifest and says
@@ -239,19 +272,57 @@ you what is left.
    harder. A kind that pins a cell outright belongs in `PLACING`; see ARCHITECTURE
    section 9 on why starving the top presets of those is what separated Expert from
    Hard.
-5. **Propagators, if it can drive a deduction.** `propagate` on the module, and a
-   rule in the right `solver/rules/tierN.ts`. Only forced eliminations — invariant 3
-   — and **the new rule joins the oracle test**, which is not optional: that suite is
-   the only thing standing between a soundness bug and a case that cannot be solved.
+5. **Propagators, if it can drive a deduction.** Only forced eliminations — invariant
+   3 — and **the new rule joins the oracle test**, which is not optional: that suite
+   is the only thing standing between a soundness bug and a case that cannot be
+   solved. Note that `ClueModule.propagate` is declared `propagate?: unknown` in
+   `types.ts` and **no module has ever filled it**; the solver switches on kind
+   instead. See the six sites below.
 6. **Run the guards.** `npm test` covers the registry's own completeness tests
    (`clues.test.ts`, `schema.test.ts`, `explain.test.ts` all iterate `CLUE_KINDS`, so
    a missing template or an unparseable schema fragment fails without a new test
    being written). Then `npm run sim` to see what the new kind does to the tables,
    and record it in ARCHITECTURE section 9 if you keep it.
 
-**What you do not have to touch:** anything outside `engine/clues/` that switches on
-`body.kind`. There is deliberately none — everything dispatches through the registry,
-including the UI, the hint text, the pack codec and the LLM layer.
+### The six switch sites the registry does not cover
+
+**This section exists because the sentence it replaces was wrong.** `clues/index.ts`,
+`types.ts:255` and ARCHITECTURE §3 all say, in wave-1 language, that everything
+dispatches through the registry and a new kind is "a new file plus one line in
+`MODULES`". That was the intention; the switches got scattered anyway. Verified by
+audit in wave 8:
+
+| Site | Cases | If an 18th kind is added |
+| --- | --- | --- |
+| `solver/exhaustive.ts` `clueProp()` | all 17 + `never` | **build fails** — the only one that does |
+| `solver/rules/tier0.ts` `applyClue()` | all 17, no default | **silently ignored** |
+| `solver/rules/tier2.ts` `applyClue()` | all 17, no default | **silently ignored** |
+| `generator/bank.ts` `places()` | 3 + default | silently ignored |
+| `generator/enumerate.ts` `givesAwayAnswer()` | 8 + default | silently ignored |
+| `generator/enumerate.ts` (who may speak it) | 11 + default | silently ignored |
+
+The dangerous pair is `tier0` and `tier2`: `applyClue` returns `void`, so TypeScript
+does **not** check exhaustiveness, and a new kind would be handled by the exhaustive
+oracle and ignored by the deduction solver. That is the two-solver divergence
+invariant 2 exists to prevent, and it surfaces as neither a type error nor a
+certificate failure — the deduction solver merely proves less, so it shows up as a
+rise in `unsolvable` rejections in `npm run sim`, which is easy to read as "the new
+clue type is not very useful".
+
+Also check `enumerate.ts#physical()` (currently `kind !== "Together"`), and
+`exhaustive.ts` tests `DoorClosed` / `BarredDoor` / `Capacity` by name outside its
+main switch when folding rule cards into movement masks.
+
+**Finding these by grep:** `grep 'body.kind'` misses four of the six, which are
+written `switch (b.kind)` after `const b = clue.body`. Search for a quoted kind name
+such as `case "At"` instead. And plain `grep kind` is very noisy — `source.kind`,
+`LlmError.kind`, `panel.kind`, `hint.kind` and `Conclusion.kind` all share the field
+name and none of them are clue kinds.
+
+**What you genuinely do not have to touch:** `src/lib/ui/`, `src/lib/game/` and
+`src/lib/llm/` contain no clue-kind switch at all. The UI's only kind test is the
+`isRuleKind` predicate. `explain.ts` has no per-kind sentence switch either — it
+delegates to the module's `template`.
 
 ## Conventions
 

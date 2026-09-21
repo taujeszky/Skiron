@@ -183,9 +183,17 @@ async function main() {
     //    offline (step 5) proves the engine survives the cache; this proves
     //    the pack does, which is a different file, a different loader and a
     //    different way to fail.
+    //    `button.case:not(.lesson)` and not `button.case`: wave 8 added two
+    //    tutorial lessons to the home screen, which carry `class="case
+    //    lesson"` and sit ABOVE the shelf. Taking the first `.case` therefore
+    //    silently started testing a tutorial lesson instead of a starter
+    //    case — and it still printed PASS with a title beside it, so the
+    //    regression was invisible in exactly the way CLAUDE.md warns about.
+    //    The lessons ship no pictures and are a different pack, so the thing
+    //    this step exists to prove was no longer being proved.
     const shipped = await cdp.eval(`
       await window.__sk.settle();
-      const shelf = window.__sk.all("button.case");
+      const shelf = window.__sk.all("button.case:not(.lesson)");
       if (shelf.length === 0) return { none: true };
       shelf[0].click();
       await new Promise((r) => setTimeout(r, 1500));
