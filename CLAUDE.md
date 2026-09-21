@@ -13,13 +13,19 @@ this file, up to date.
 
 ## Ask the owner first
 
-- Creating the GitHub repository (`taujeszky/Skiron`) or pushing to it.
-- The first Cloudflare Pages deploy.
+- Pushing to `github.com/taujeszky/Skiron`. **It is public.** Anything pushed is
+  published, and a later commit does not unpublish it.
+- Deploying to Cloudflare Pages (`skiron` → <https://skiron-e0f.pages.dev>).
 - Any paid batch of API calls — say how many calls you expect.
-- Adding Skiron to the portfolio catalog in `../index.html`.
+- Editing the portfolio catalog in `../index.html`.
 - Changing anything listed under "Locked by the owner" in the plan.
 
 Local commits on `main` are fine without asking.
+
+*The first three were one-time gates until 2026-09-21, when the owner asked for wave 8's
+task 8 and all of them were used. They are rewritten above as ongoing gates, which is the
+conservative reading of a rule the owner wrote — say so if a push and a redeploy should
+now be as routine as a local commit.*
 
 ## Stack
 
@@ -359,7 +365,9 @@ delegates to the module's `template`.
 
 ## State of the project (2026-09-21)
 
-**Waves 0-7 done; wave 8 done except its owner gates; wave 9 not started.** 963 tests
+**Waves 0-8 done; wave 9 not started. Skiron is published:**
+<https://github.com/taujeszky/Skiron> (public) and <https://skiron-e0f.pages.dev> (live),
+and it is the twentieth card in the portfolio catalog. 963 tests
 green in ~13s,
 `npm run check` at 0/0 over 526 files, `npm run contrast` at 0 of 78 pairs. The game is
 playable end to end, offline, with no key: twelve illustrated cases and two tutorial
@@ -478,13 +486,28 @@ doing what it said. Three of those were shipping bugs:
   element a leaf in the accessibility tree, so the `role="button"` on each room was
   never exposed. Keyboard-focusable and silent since wave 4.
 
-**Task 8 was offered to the owner on 2026-09-21 and held.** They were given all three
-(repo, deploy, catalog), repo-and-deploy, repo-only, or hold, and chose **hold all
-three**. So there is still no GitHub repository, no Cloudflare project and no catalog
-entry, and **that is a decision rather than an omission** - the second time they have
-deferred a deploy rather than publish before they are ready. Do not re-ask unless asked
-to. The repository was checked and is ready when they are: 296 files, 6.6 MB, nothing
-key-shaped tracked except obviously fake test constants.
+**Task 8 was offered on 2026-09-21, held, and then asked for the same day.** Offered all
+three (repo, deploy, catalog), repo-and-deploy, repo-only, or hold, the owner chose
+**hold all three** - the second time they deferred a deploy rather than publish before
+they were ready. Then: "okay for now finish wave 8, task 8 please". All three are done.
+
+- **Repository** `taujeszky/Skiron`, public, 297 files. The pre-flight was re-run rather
+  than trusted, because a repository is not un-published: the only key-shaped strings
+  tracked are two deliberately fake constants in the tests that prove the scrubber works,
+  both compared against the real key on disk, and **the real key was searched for across
+  all 55 commits and not merely the working tree** - a key deleted in a later commit is
+  still public. It appears in none.
+- **Deploy** <https://skiron-e0f.pages.dev>. Create the Pages project explicitly first
+  (`wrangler pages project create skiron --production-branch main`); `pages deploy` would
+  otherwise prompt for it, and this shell is non-interactive. Verified against the
+  *deployed* site rather than a local build, with `npm run offline -- --url
+  https://skiron-e0f.pages.dev/`: worker installed, network cut, all four difficulties
+  generated and played, shipped case opened in its own words.
+- **Catalog** a 20th `PROJECTS` entry in `../index.html` plus one `gemini-3.1-flash-image`
+  call (~$0.05, approved first, usable first time). Its draft description was **453
+  characters against a sibling average of 282** - the house voice dilutes one entry at a
+  time, so measure against the neighbours rather than write to taste. `../index.html` and
+  `../catalog-art/` are **not** under version control.
 
 **The one thing wave 8 did not settle, and should not be read as settled:** *nobody has
 solved a case in words.* The balance pass measured the generator and par; item 3 of "How

@@ -40,11 +40,11 @@ first hour is not spent discovering what the last wave left.
 
 ### Where the project is
 
-Waves 0–8 done, except wave 8's task 8, which is three owner gates — the
-GitHub repository, the first Cloudflare deploy, the portfolio catalog entry.
-They were offered on 2026-09-21 and the owner chose to **hold all three**.
-Nothing is published. That is a decision, not an omission; do not re-ask
-without being asked to.
+Waves 0–8 done. Wave 8's task 8 — the three owner gates — was offered on
+2026-09-21, held, and then asked for the same day. **Skiron is published:**
+<https://github.com/taujeszky/Skiron> (public), <https://skiron-e0f.pages.dev>
+(live), and the twentieth card in the portfolio catalog. Anything pushed from
+here on is published as it is pushed.
 
 963 tests in ~13 s, `npm run check` 0/0 over 526 files, `npm run contrast` 0 of
 78 pairs, `npm run offline` PASS. Twelve illustrated cases and two tutorial
@@ -253,7 +253,10 @@ Still open, and worth knowing before anything outward-facing:
 - **A sub-path deploy would break pack loading.** Nothing in `src/` uses
   `$app/paths`; `packLoader.ts` and `controller.ts` build root-absolute
   `/cases/...` URLs. `util/precache.ts` is the only base-path-aware code in the
-  repo. Fine for a Cloudflare Pages root deploy, broken anywhere else.
+  repo. The live deploy is at the root of `skiron-e0f.pages.dev`, so this does
+  not bite today and both pack manifests were confirmed to load from it — but a
+  move to a sub-path, a custom domain with a prefix, or GitHub Pages would
+  break the shelf, and nothing in the suite would say so first.
 - ~~**`Save.pack`'s validation is non-fatal, unlike every other field in
   `parseSave`.**~~ **Fixed 2026-09-21.** A malformed pack name degraded to
   `undefined` — which does not mean "we did not understand this" but "this is

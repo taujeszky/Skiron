@@ -12,6 +12,9 @@ Twelve illustrated cases ship with the site and need no key and no network. Type
 of your own — a lighthouse in a storm in 1923, a generation ship, a monastery — and get a
 fresh one written to match.
 
+**[Play it](https://skiron-e0f.pages.dev)** — installable, and it generates fresh cases
+with the network unplugged.
+
 ## What makes it different
 
 - **The puzzle is certified twice before you see it.** A tiered deduction solver has to

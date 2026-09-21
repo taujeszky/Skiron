@@ -117,14 +117,38 @@ is documented to the standard of its siblings.
    deploy; then add Skiron to the portfolio catalog — a `PROJECTS` entry in
    `../index.html` (that file has very long lines; read it in slices) and card art through
    `../catalog-art`.
-   ***Asked, and held.** 2026-09-21: the owner was offered all three (repo, deploy,
-   catalog), repo-and-deploy, repo-only, or hold, and chose **hold all three**. So nothing
-   outward-facing has happened: no GitHub repository, no Cloudflare project, no catalog
-   entry. This is the second time they have deferred a deploy rather than publish before
-   they are ready — the first was at the end of wave 4, which is how the deploy came to be
-   wave 8's in the first place. Do not re-ask without being asked to; the repository is
-   ready when they are. It was checked before asking: 296 files, 6.6 MB, no key-shaped
-   string anywhere tracked except obviously fake test constants, `.env*` ignored.*
+   ***Asked and held on 2026-09-21, then done the same day when the owner asked for it.***
+
+   *Held first: offered all three (repo, deploy, catalog), repo-and-deploy, repo-only, or
+   hold, they chose **hold all three** — the second time they deferred a deploy rather
+   than publish before they were ready, the first being the end of wave 4, which is how
+   the deploy came to be wave 8's at all. Then, later the same day: "okay for now finish
+   wave 8, task 8 please". All three are done.*
+
+   - ***Repository:** <https://github.com/taujeszky/Skiron>, public, 297 files. The
+     pre-flight was re-run rather than trusted — a repository is not un-published. No
+     `.env` is tracked, `.claude/` is ignored, and the only key-shaped strings are two
+     deliberately fake constants in the tests that prove the scrubber works. Both were
+     compared against the real key on disk (they differ), and **the real key was searched
+     for across all 55 commits, not just the working tree** — a key deleted in a later
+     commit is still public. It appears in none.*
+   - ***Deploy:** <https://skiron-e0f.pages.dev>. `wrangler pages project create skiron
+     --production-branch main` first, because `pages deploy` would otherwise prompt for it
+     and this shell is non-interactive. 134 files. Verified as the deployed site and not
+     as a local build: `/`, `/service-worker.js`, `/cases/starter/manifest.json` and
+     `/cases/tutorial/manifest.json` all 200, then **`npm run offline -- --url
+     https://skiron-e0f.pages.dev/`**, which installed the worker, cut the network, and
+     generated and played a case at all four difficulties before opening a shipped case
+     in its own words. The root-absolute `/cases/...` URLs noted in
+     `wave-9-beyond.md` are fine here because this is a root deploy; they would still
+     break a sub-path one.*
+   - ***Catalog:** a `PROJECTS` entry in `../index.html` (20 now) and card art through
+     `../catalog-art` — one `gemini-3.1-flash-image` call, about $0.05, approved
+     beforehand as the fourth gate requires, usable first time. The first draft of the
+     entry was **453 characters against a sibling average of 282**, which is how the house
+     voice gets diluted one entry at a time; measured against the other four puzzle cards
+     and cut to 292. `../index.html` and `../catalog-art/` are **not under version
+     control**, so those edits are not in any commit.*
 
 ## Exit criteria
 
@@ -141,7 +165,7 @@ is documented to the standard of its siblings.
   new. Both the sim and par tables are in ARCHITECTURE section 9.*
 - README, CLAUDE.md and ARCHITECTURE.md describe the project as it is. *Done.*
 
-**The wave is complete except task 8, which is three owner gates — offered on 2026-09-21 and held by the owner.** The one other thing left open is named under task 2: nobody has yet solved a case in words, and saying so is not the same as having measured it.
+**The wave is complete.** Task 8's three owner gates were offered on 2026-09-21, held, and then asked for and done the same day: the repository is public, the site is deployed, and Skiron is the twentieth card in the catalog. The one thing still left open is named under task 2: **nobody has yet solved a case in words**, and saying so is not the same as having measured it. Shipping did not settle it and should not be read as having done so.
 
 ---
 
